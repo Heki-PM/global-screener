@@ -39,9 +39,9 @@ log = logging.getLogger(__name__)
 # ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
 EMAIL_CONFIG = {
-    "sender":    os.environ.get("EMAIL_SENDER",    "your_email@gmail.com"),
-    "password":  os.environ.get("EMAIL_PASSWORD",  "your_app_password_here"),
-    "recipient": os.environ.get("EMAIL_RECIPIENT", "your_email@gmail.com"),
+    "sender":    os.environ.get("EMAIL_SENDER",    "pawel.marczas@gmail.com"),
+    "password":  os.environ.get("EMAIL_PASSWORD",  "yesu agsh iimn pofz"),
+    "recipient": os.environ.get("EMAIL_RECIPIENT", "pawel.marczas@icloud.com"),
     "smtp_host": "smtp.gmail.com",
     "smtp_port": 587,
 }
