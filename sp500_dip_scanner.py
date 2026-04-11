@@ -35,9 +35,9 @@ log = logging.getLogger(__name__)
 # ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
 EMAIL_CONFIG = {
-    "sender":    "your_email@gmail.com",     # your sending address
-    "password":  "your_app_password_here",   # Gmail App Password (not your login password)
-    "recipient": "your_email@gmail.com",     # where to receive the report
+    "sender":    "pawel.marczas@gmail.com",     # your sending address
+    "password":  "yesu agsh iimn pofz",   # Gmail App Password (not your login password)
+    "recipient": "pawel.marczas@icloud.pl",     # where to receive the report
     "smtp_host": "smtp.gmail.com",
     "smtp_port": 587,
 }
