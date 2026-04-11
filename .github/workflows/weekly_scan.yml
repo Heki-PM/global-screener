@@ -5,6 +5,9 @@ on:
     - cron: '0 7 * * 1'   # every Monday at 07:00 UTC (09:00 Warsaw time)
   workflow_dispatch:        # allows manual trigger from the Actions tab
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -12,15 +15,29 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: '3.11'
 
       - name: Install dependencies
         run: pip install yfinance pandas ta schedule
+
+      - name: Verify secrets are set
+        run: |
+          if [ -z "$EMAIL_SENDER" ]; then echo "ERROR: EMAIL_SENDER secret is not set"; exit 1; fi
+          if [ -z "$EMAIL_PASSWORD" ]; then echo "ERROR: EMAIL_PASSWORD secret is not set"; exit 1; fi
+          if [ -z "$EMAIL_RECIPIENT" ]; then echo "ERROR: EMAIL_RECIPIENT secret is not set"; exit 1; fi
+          echo "All secrets present."
+          echo "Sender: $EMAIL_SENDER"
+          echo "Recipient: $EMAIL_RECIPIENT"
+          echo "Password length: ${#EMAIL_PASSWORD} characters"
+        env:
+          EMAIL_SENDER:    ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:  ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
 
       - name: Run dip scanner
         env:
