@@ -20,7 +20,7 @@ Email setup:
 
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
+import ta
 import smtplib
 import schedule
 import time
