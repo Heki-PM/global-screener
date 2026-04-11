@@ -40,13 +40,13 @@ log = logging.getLogger(__name__)
 
 EMAIL_CONFIG = {
     "sender":    os.environ.get("EMAIL_SENDER",    "pawel.marczas@gmail.com"),
-    "password":  os.environ.get("EMAIL_PASSWORD",  "yesu agsh iimn pofz"),
+    "password":  os.environ.get("EMAIL_PASSWORD",  "yesuagshiimnpofz"),
     "recipient": os.environ.get("EMAIL_RECIPIENT", "pawel.marczas@icloud.com"),
     "smtp_host": "smtp.gmail.com",
     "smtp_port": 587,
 }
 
-PRICE_CEILING = 50.0   # only include stocks below this price (USD)
+PRICE_CEILING = 250.0   # only include stocks below this price (USD)
 RSI_THRESHOLD = 35     # RSI below this value = oversold
 MIN_SIGNALS   = 2      # minimum signals required to appear in report
 PERIOD_DAYS   = "1y"   # historical data window per stock
