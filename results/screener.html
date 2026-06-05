@@ -1,8 +1,9 @@
-<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8">
+<!DOCTYPE html>
+<html lang="pl"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Global Stock Screener</title><style>
+<title>Global Fundamental Screener</title><style>
 :root{--bg:#0f1117;--bg2:#1a1f2e;--bg3:#1e2530;--text:#e2e8f0;--muted:#64748b;
-      --border:#2d3748;--green:#22c55e;--blue:#60a5fa;--purple:#a78bfa;--red:#f87171}
+      --border:#2d3748;--green:#22c55e;--blue:#60a5fa;--yellow:#fbbf24;--red:#f87171}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);padding:20px}
 header{text-align:center;padding:32px 0 24px;border-bottom:1px solid var(--border);margin-bottom:28px}
@@ -10,72 +11,156 @@ header h1{font-size:1.8rem;font-weight:800}
 header p{color:var(--muted);font-size:.88rem;margin-top:6px}
 .stats{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
 .stat{background:var(--bg3);border-radius:10px;padding:12px 22px;text-align:center}
-.stat-n{font-size:1.6rem;font-weight:800}.stat-l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
-.green{color:var(--green)}.blue{color:var(--blue)}.purple{color:var(--purple)}
-section{margin-bottom:34px}
-section h2{font-size:1.05rem;font-weight:700;margin-bottom:12px;padding-left:2px}
-table{width:100%;border-collapse:collapse;font-size:.81rem}
-thead th{background:var(--bg3);padding:9px 10px;text-align:left;font-size:.68rem;
-         text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
-         border-bottom:1px solid var(--border);position:sticky;top:0}
-tbody tr{border-bottom:1px solid var(--border)}
-tbody tr:hover{background:var(--bg2)}
-tbody td{padding:8px 10px}
-.badge{display:inline-block;border-radius:5px;font-size:.68rem;font-weight:700;padding:2px 7px}
-.bs{background:#22c55e22;color:var(--green)}.bb{background:#60a5fa22;color:var(--blue)}
-.bt{background:#a78bfa22;color:var(--purple)}
-.ticker{font-weight:800;font-size:.93rem}.name{color:var(--muted);font-size:.76rem}
-.num{font-variant-numeric:tabular-nums}
-.pos{color:var(--green)}.neg{color:var(--red)}
-.ex{font-size:.68rem;color:var(--muted);background:var(--bg3);border-radius:4px;padding:1px 5px}
-a{color:inherit;text-decoration:none}a:hover{text-decoration:underline}
+.stat-n{font-size:1.6rem;font-weight:800}
+.stat-l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.green{color:var(--green)}.blue{color:var(--blue)}.yellow{color:var(--yellow)}
 .fbox{background:var(--bg3);border-radius:10px;padding:14px 18px;margin-bottom:24px;
       font-size:.79rem;color:var(--muted);line-height:2}
 .fbox strong{color:var(--text)}
+.search-bar{margin-bottom:20px}
+.search-bar input{width:100%;background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);padding:10px 14px;font-size:.9rem;outline:none}
+.search-bar input:focus{border-color:var(--blue)}
+.tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.tab{background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+     padding:7px 16px;font-size:.8rem;cursor:pointer;color:var(--muted);transition:all .15s}
+.tab.active,.tab:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
+table{width:100%;border-collapse:collapse;font-size:.81rem}
+thead th{background:var(--bg3);padding:9px 10px;text-align:left;font-size:.68rem;
+         text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+         border-bottom:1px solid var(--border);position:sticky;top:0;cursor:pointer}
+thead th:hover{color:var(--text)}
+thead th.sorted-asc::after{content:" ▲"}
+thead th.sorted-desc::after{content:" ▼"}
+tbody tr{border-bottom:1px solid var(--border)}
+tbody tr:hover{background:var(--bg2)}
+tbody td{padding:8px 10px}
+.ticker{font-weight:800;font-size:.93rem}
+.name{color:var(--muted);font-size:.75rem;white-space:nowrap;overflow:hidden;
+      text-overflow:ellipsis;max-width:160px;display:block}
+.num{font-variant-numeric:tabular-nums}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.ex{font-size:.68rem;color:var(--muted);background:var(--bg3);
+    border-radius:4px;padding:1px 6px;white-space:nowrap}
+.sec-tag{font-size:.68rem;color:var(--muted)}
+a{color:inherit;text-decoration:none}a:hover{text-decoration:underline}
+#count{color:var(--muted);font-size:.8rem;margin-bottom:10px}
 </style></head><body>
-<header><h1>🌍 Global Stock Screener</h1>
-<p>SMI(10,3,3) · Tygodniowy · yfinance · 2026-06-05 20:09 UTC</p></header>
+<header>
+  <h1>🌍 Global Fundamental Screener</h1>
+  <p>Filtry fundamentalne · yfinance · Bez SMI &nbsp;|&nbsp; 2026-06-05 20:28 UTC</p>
+</header>
 <div class="stats">
-<div class="stat"><div class="stat-n green">1</div><div class="stat-l">⚡ Strong BUY</div></div>
-<div class="stat"><div class="stat-n blue">0</div><div class="stat-l">▲ BUY</div></div>
-<div class="stat"><div class="stat-n purple">0</div><div class="stat-l">↗ Turning Up</div></div>
-<div class="stat"><div class="stat-n">1</div><div class="stat-l">Łącznie</div></div>
-</div><div class="fbox">
-<strong>Filtry:</strong> MarketCap≥<strong>1B</strong> · Cena≥<strong>$10</strong> ·
-EPS≥<strong>0.10</strong> · EBITDA M.≥<strong>15%</strong> · ROIC≥<strong>10%</strong> ·
-RevGrowth≥<strong>5%</strong> · CashOps≥<strong>$1M</strong> · Ohlson≤<strong>5%</strong> ·
-<strong>SMI(10,3,3) W1</strong>
+  <div class="stat"><div class="stat-n green">0</div><div class="stat-l">🇺🇸 USA</div></div>
+  <div class="stat"><div class="stat-n blue">0</div><div class="stat-l">🇪🇺 Europa</div></div>
+  <div class="stat"><div class="stat-n yellow">0</div><div class="stat-l">🌏 Azja/EM</div></div>
+  <div class="stat"><div class="stat-n">2</div><div class="stat-l">Łącznie</div></div>
 </div>
-<section><h2 class="green">⚡ Strong BUY — crossover z oversold (SMI &lt; −40)</h2><table><thead><tr>
-<th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Sektor</th><th>Cena</th>
-<th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th><th>EBITDA M.</th>
-<th>ROIC</th><th>EPS TTM</th><th>Ohlson</th><th>SMI/Sig</th>
-</tr></thead><tbody><tr>
-<td><span class="ticker"><a href="https://finance.yahoo.com/quote/7974.T" target="_blank">7974.T</a></span>
-    <br><span class="name">Nintendo Co., Ltd.</span></td>
-<td><span class="badge bs">⚡ STRONG BUY</span></td>
-<td><span class="ex">TSE</span></td>
-<td><span class="name">Communication Servic</span></td>
-<td class="num">$7524.00</td>
-<td class="num">$8.7T</td>
-<td class="num"><span class="pos">+95.1%</span></td>
-<td class="num"><span class="pos">+57.1%</span></td>
-<td class="num">16.2%</td>
-<td class="num">14.4%</td>
-<td class="num">364.33</td>
-<td class="num">—</td>
-<td class="num">-87.3/-89.4</td>
-</tr></tbody></table></section>
-<section><h2 class="blue">▲ BUY — SMI crossover</h2><table><thead><tr>
-<th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Sektor</th><th>Cena</th>
-<th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th><th>EBITDA M.</th>
-<th>ROIC</th><th>EPS TTM</th><th>Ohlson</th><th>SMI/Sig</th>
-</tr></thead><tbody><tr><td colspan="13" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr></tbody></table></section>
-<section><h2 class="purple">↗ Turning Up — zmiana kierunku (pre-crossover)</h2><table><thead><tr>
-<th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Sektor</th><th>Cena</th>
-<th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th><th>EBITDA M.</th>
-<th>ROIC</th><th>EPS TTM</th><th>Ohlson</th><th>SMI/Sig</th>
-</tr></thead><tbody><tr><td colspan="13" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr></tbody></table></section>
+<div class="fbox">
+<strong>Filtry fundamentalne:</strong>
+MarketCap ≥ <strong>1B</strong> &nbsp;·&nbsp;
+Cena ≥ <strong>$10</strong> &nbsp;·&nbsp;
+EPS TTM ≥ <strong>0.10</strong> &nbsp;·&nbsp;
+EBITDA Margin ≥ <strong>15%</strong> &nbsp;·&nbsp;
+ROIC ≥ <strong>10%</strong> &nbsp;·&nbsp;
+Rev Growth ≥ <strong>5% YoY</strong> &nbsp;·&nbsp;
+Cash Ops ≥ <strong>$1M</strong> &nbsp;·&nbsp;
+Ohlson Score ≤ <strong>5%</strong>
+&nbsp;&nbsp;|&nbsp;&nbsp;
+<strong>Bez filtru SMI</strong> — do samodzielnej analizy w TradingView
+</div>
+<div class="search-bar"><input id="search" type="text" placeholder="🔍  Szukaj po nazwie, tickerze, sektorze..."></div>
+<div class="tabs"><div class="tab active" data-tab="all">Wszystkie (2)</div><div class="tab" data-tab="GPW">GPW (2)</div></div>
+<div id="count"></div>
+<table><thead><tr>
+<th data-col="symbol">Spółka</th>
+<th data-col="exchange">Region</th>
+<th data-col="sector">Sektor</th>
+<th data-col="country">Kraj</th>
+<th data-col="price">Cena</th>
+<th data-col="market_cap">Market Cap</th>
+<th data-col="rev_growth">Rev Growth</th>
+<th data-col="eps_growth">EPS Growth</th>
+<th data-col="ebitda_margin">EBITDA M.</th>
+<th data-col="roic">ROIC</th>
+<th data-col="eps">EPS TTM</th>
+<th data-col="ohlson">Ohlson</th>
+</tr></thead><tbody><tr data-exchange="GPW" data-sector="Communication Services"><td><span class="ticker"><a href="https://finance.yahoo.com/quote/CDR.WA" target="_blank">CDR.WA</a></span><span class="name">CD Projekt S.A.</span></td><td><span class="ex">GPW</span></td><td><span class="sec-tag">Communication Services</span></td><td class="num">Poland</td><td class="num">$227.80</td><td class="num">$22.8B</td><td class="num"><span class="pos">+6.1%</span></td><td class="num"><span class="neg">-5.4%</span></td><td class="num">55.8%</td><td class="num">15.0%</td><td class="num">5.66</td><td class="num">—</td></tr>
+<tr data-exchange="GPW" data-sector="Financial Services"><td><span class="ticker"><a href="https://finance.yahoo.com/quote/GPW.WA" target="_blank">GPW.WA</a></span><span class="name">Gielda Papierów Wartosciowych w Warszawie S.A.</span></td><td><span class="ex">GPW</span></td><td><span class="sec-tag">Financial Services</span></td><td class="num">Poland</td><td class="num">$82.35</td><td class="num">$3.5B</td><td class="num"><span class="pos">+27.5%</span></td><td class="num"><span class="pos">+38.3%</span></td><td class="num">42.6%</td><td class="num">17.5%</td><td class="num">5.11</td><td class="num">—</td></tr></tbody></table>
+
+<script>
+const allRows = Array.from(document.querySelectorAll('tbody tr'));
+let activeTab = 'all';
+let sortCol = 'market_cap', sortDir = -1;
+let searchVal = '';
+
+const colIndex = {};
+document.querySelectorAll('thead th').forEach((th,i) => {
+  colIndex[th.dataset.col] = i;
+  th.addEventListener('click', () => {
+    if(sortCol === th.dataset.col) sortDir *= -1;
+    else { sortCol = th.dataset.col; sortDir = -1; }
+    document.querySelectorAll('thead th').forEach(t => t.classList.remove('sorted-asc','sorted-desc'));
+    th.classList.add(sortDir === 1 ? 'sorted-asc' : 'sorted-desc');
+    render();
+  });
+});
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    activeTab = t.dataset.tab;
+    render();
+  });
+});
+
+document.getElementById('search').addEventListener('input', e => {
+  searchVal = e.target.value.toLowerCase();
+  render();
+});
+
+function cellVal(row, col) {
+  const idx = colIndex[col];
+  if(idx === undefined) return '';
+  const td = row.cells[idx];
+  const span = td.querySelector('.ticker') || td.querySelector('span') || td;
+  return (span.textContent || td.textContent).trim();
+}
+
+function numVal(row, col) {
+  const v = cellVal(row, col).replace(/[$,TBM%+]/g,'');
+  const n = parseFloat(v);
+  return isNaN(n) ? -Infinity : n;
+}
+
+function render() {
+  let rows = allRows.filter(r => {
+    if(activeTab !== 'all' && r.dataset.exchange !== activeTab) return false;
+    if(searchVal) {
+      const txt = r.textContent.toLowerCase();
+      if(!txt.includes(searchVal)) return false;
+    }
+    return true;
+  });
+
+  const numCols = ['price','market_cap','rev_growth','eps_growth','ebitda_margin','roic','eps','ohlson'];
+  rows.sort((a,b) => {
+    const v = numCols.includes(sortCol)
+      ? (numVal(a,sortCol) - numVal(b,sortCol)) * sortDir
+      : cellVal(a,sortCol).localeCompare(cellVal(b,sortCol)) * sortDir;
+    return v;
+  });
+
+  const tbody = document.querySelector('tbody');
+  rows.forEach(r => tbody.appendChild(r));
+  allRows.filter(r => !rows.includes(r)).forEach(r => r.style.display='none');
+  rows.forEach(r => r.style.display='');
+  document.getElementById('count').textContent = `Wyświetlono: ${rows.length} spółek`;
+}
+
+render();
+</script>
 <footer style="text-align:center;color:var(--muted);font-size:.75rem;padding:40px 0 20px">
-Dane: Yahoo Finance (yfinance) · Tylko informacyjne, nie stanowi rekomendacji
+Dane: Yahoo Finance (yfinance) · Tylko informacyjne, nie stanowi rekomendacji inwestycyjnej
 </footer></body></html>
