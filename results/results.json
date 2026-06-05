@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "symbol": "7974.T",
+    "exchange": "TSE",
+    "signal": "STRONG BUY",
+    "smi_val": -87.3,
+    "smi_sig": -89.39,
+    "name": "Nintendo Co., Ltd.",
+    "sector": "Communication Services",
+    "price": 7524.0,
+    "market_cap": 8673884635136,
+    "eps": 364.33,
+    "ebitda_margin": 16.25,
+    "roic": 14.36,
+    "cash_ops": 289788985344,
+    "rev_growth": 95.1,
+    "eps_growth": 57.1,
+    "ohlson": null
+  }
+]
