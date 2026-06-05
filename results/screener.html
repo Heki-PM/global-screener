@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Global Stock Screener</title>
+
+<style>
+:root {
+  --bg: #0f1117; --bg2: #1a1f2e; --bg3: #1e2530;
+  --text: #e2e8f0; --muted: #64748b; --border: #2d3748;
+  --green: #22c55e; --blue: #60a5fa; --purple: #a78bfa;
+  --red: #f87171; --yellow: #fbbf24;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+header { text-align: center; padding: 32px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+header h1 { font-size: 1.8rem; font-weight: 800; }
+header p  { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
+.stats { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 32px; }
+.stat { background: var(--bg3); border-radius: 10px; padding: 12px 22px; text-align: center; }
+.stat-n { font-size: 1.6rem; font-weight: 800; }
+.stat-l { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+.green { color: var(--green); } .blue { color: var(--blue); } .purple { color: var(--purple); }
+section { margin-bottom: 36px; }
+section h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 14px; padding-left: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+thead th { background: var(--bg3); padding: 10px 12px; text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: var(--bg2); }
+tbody td { padding: 9px 12px; }
+.badge { display: inline-block; border-radius: 5px; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; }
+.badge-strong { background: #22c55e22; color: var(--green); }
+.badge-buy    { background: #60a5fa22; color: var(--blue); }
+.badge-turn   { background: #a78bfa22; color: var(--purple); }
+.ticker { font-weight: 800; font-size: 0.95rem; }
+.name   { color: var(--muted); font-size: 0.78rem; }
+.num    { font-variant-numeric: tabular-nums; }
+.pos    { color: var(--green); }
+.neg    { color: var(--red); }
+.ex-tag { font-size: 0.7rem; color: var(--muted); background: var(--bg3); border-radius: 4px; padding: 1px 6px; }
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.filters-box { background: var(--bg3); border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; font-size: 0.8rem; color: var(--muted); line-height: 1.9; }
+.filters-box strong { color: var(--text); }
+@media (max-width: 768px) { table { font-size: 0.75rem; } thead th, tbody td { padding: 7px 6px; } }
+</style>
+
+</head>
+<body>
+<header>
+  <h1>🌍 Global Stock Screener</h1>
+  <p>SMI(10,3,3) · Tygodniowy · Filtry fundamentalne FMP &nbsp;|&nbsp; 2026-06-05 16:20 UTC</p>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="stat-n green">0</div><div class="stat-l">⚡ Strong BUY</div></div>
+  <div class="stat"><div class="stat-n blue">0</div><div class="stat-l">▲ BUY</div></div>
+  <div class="stat"><div class="stat-n purple">0</div><div class="stat-l">↗ Turning Up</div></div>
+  <div class="stat"><div class="stat-n">0</div><div class="stat-l">Łącznie</div></div>
+</div>
+
+
+    <div class="filters-box">
+      <strong>Aktywne filtry:</strong>
+      Market Cap ≥ <strong>10B</strong> &nbsp;·&nbsp;
+      Cena ≥ <strong>$10</strong> &nbsp;·&nbsp;
+      Revenue growth ≥ <strong>5%</strong> &nbsp;·&nbsp;
+      EPS growth ≥ <strong>5%</strong> &nbsp;·&nbsp;
+      EPS TTM ≥ <strong>0.10</strong> &nbsp;·&nbsp;
+      EBITDA Margin ≥ <strong>15%</strong> &nbsp;·&nbsp;
+      ROIC ≥ <strong>10%</strong> &nbsp;·&nbsp;
+      Ohlson ≤ <strong>3%</strong> &nbsp;·&nbsp;
+      Cash from Ops ≥ <strong>$1M</strong> &nbsp;·&nbsp;
+      SMI(10,3,3) W1: <strong>BUY / STRONG BUY / TURNING UP</strong>
+    </div>
+
+<section>
+  <h2 class="green">⚡ Strong BUY — SMI crossover z oversold (&lt; −40)</h2>
+  <table><thead><tr>
+      <th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Cena</th>
+      <th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th>
+      <th>EBITDA Margin</th><th>ROIC</th><th>EPS TTM</th>
+      <th>Ohlson</th><th>SMI / Signal</th>
+    </tr></thead><tbody><tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr></tbody></table>
+</section>
+
+<section>
+  <h2 class="blue">▲ BUY — SMI crossover</h2>
+  <table><thead><tr>
+      <th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Cena</th>
+      <th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th>
+      <th>EBITDA Margin</th><th>ROIC</th><th>EPS TTM</th>
+      <th>Ohlson</th><th>SMI / Signal</th>
+    </tr></thead><tbody><tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr></tbody></table>
+</section>
+
+<section>
+  <h2 class="purple">↗ Turning Up — zmiana kierunku (przed crossover)</h2>
+  <table><thead><tr>
+      <th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Cena</th>
+      <th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th>
+      <th>EBITDA Margin</th><th>ROIC</th><th>EPS TTM</th>
+      <th>Ohlson</th><th>SMI / Signal</th>
+    </tr></thead><tbody><tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr></tbody></table>
+</section>
+
+<footer style="text-align:center;color:var(--muted);font-size:0.75rem;padding:40px 0 20px">
+  Dane: Financial Modeling Prep + Yahoo Finance (yfinance) &nbsp;·&nbsp;
+  Wyłącznie informacyjne, nie stanowi rekomendacji inwestycyjnej
+</footer>
+</body>
+</html>
