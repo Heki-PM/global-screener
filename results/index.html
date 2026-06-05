@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="pl"><head><meta charset="UTF-8">
+<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Global Fundamental Screener</title><style>
 :root{--bg:#0f1117;--bg2:#1a1f2e;--bg3:#1e2530;--text:#e2e8f0;--muted:#64748b;
@@ -14,37 +13,37 @@ header p{color:var(--muted);font-size:.88rem;margin-top:6px}
 .stat-n{font-size:1.6rem;font-weight:800}
 .stat-l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
 .green{color:var(--green)}.blue{color:var(--blue)}.yellow{color:var(--yellow)}
-.fbox{background:var(--bg3);border-radius:10px;padding:14px 18px;margin-bottom:24px;
+.fbox{background:var(--bg3);border-radius:10px;padding:14px 18px;margin-bottom:20px;
       font-size:.79rem;color:var(--muted);line-height:2}
 .fbox strong{color:var(--text)}
-.search-bar{margin-bottom:20px}
+.search-bar{margin-bottom:14px}
 .search-bar input{width:100%;background:var(--bg3);border:1px solid var(--border);
   border-radius:8px;color:var(--text);padding:10px 14px;font-size:.9rem;outline:none}
 .search-bar input:focus{border-color:var(--blue)}
-.tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
 .tab{background:var(--bg3);border:1px solid var(--border);border-radius:8px;
-     padding:7px 16px;font-size:.8rem;cursor:pointer;color:var(--muted);transition:all .15s}
+     padding:6px 14px;font-size:.78rem;cursor:pointer;color:var(--muted);transition:all .15s}
 .tab.active,.tab:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
 table{width:100%;border-collapse:collapse;font-size:.81rem}
 thead th{background:var(--bg3);padding:9px 10px;text-align:left;font-size:.68rem;
          text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
-         border-bottom:1px solid var(--border);position:sticky;top:0;cursor:pointer}
+         border-bottom:1px solid var(--border);position:sticky;top:0;cursor:pointer;
+         user-select:none}
 thead th:hover{color:var(--text)}
-thead th.sorted-asc::after{content:" ▲"}
-thead th.sorted-desc::after{content:" ▼"}
+thead th.asc::after{content:" ▲"}thead th.desc::after{content:" ▼"}
 tbody tr{border-bottom:1px solid var(--border)}
 tbody tr:hover{background:var(--bg2)}
 tbody td{padding:8px 10px}
 .ticker{font-weight:800;font-size:.93rem}
-.name{color:var(--muted);font-size:.75rem;white-space:nowrap;overflow:hidden;
-      text-overflow:ellipsis;max-width:160px;display:block}
+.nm{color:var(--muted);font-size:.74rem;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:170px;display:block}
 .num{font-variant-numeric:tabular-nums}
 .pos{color:var(--green)}.neg{color:var(--red)}
 .ex{font-size:.68rem;color:var(--muted);background:var(--bg3);
-    border-radius:4px;padding:1px 6px;white-space:nowrap}
-.sec-tag{font-size:.68rem;color:var(--muted)}
+    border-radius:4px;padding:1px 6px}
+.sec{font-size:.72rem;color:var(--muted)}
 a{color:inherit;text-decoration:none}a:hover{text-decoration:underline}
-#count{color:var(--muted);font-size:.8rem;margin-bottom:10px}
+#count{color:var(--muted);font-size:.8rem;margin-bottom:8px}
 </style>
 <style>
 .hero{text-align:center;padding:60px 20px}
@@ -59,21 +58,20 @@ a{color:inherit;text-decoration:none}a:hover{text-decoration:underline}
 .btn{display:inline-block;background:#3b82f6;color:#fff;border-radius:10px;
       padding:13px 30px;font-size:1rem;font-weight:700;text-decoration:none;margin:6px}
 .btn:hover{background:#2563eb}
-.btn-sec{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
-.btn-sec:hover{background:var(--bg2)}
+.btn2{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn2:hover{background:var(--bg2)}
 .ts{color:var(--muted);font-size:.8rem;margin-top:16px}
 </style></head><body>
 <div class="hero">
-  <h1>🌍 Global Fundamental Screener</h1>
-  <p>MarketCap ≥ 1B · EBITDA ≥ 15% · ROIC ≥ 10% · RevGrowth ≥ 5% · Ohlson ≤ 5%</p>
-  <div class="cards">
-    <div class="card"><div class="card-n green">0</div><div class="card-l">🇺🇸 USA</div></div>
-    <div class="card"><div class="card-n blue">0</div><div class="card-l">🇪🇺 Europa</div></div>
-    <div class="card"><div class="card-n yellow">0</div><div class="card-l">🌏 Azja/EM</div></div>
-    <div class="card"><div class="card-n">2</div><div class="card-l">🇵🇱 GPW</div></div>
-    <div class="card"><div class="card-n">2</div><div class="card-l">Łącznie</div></div>
-  </div>
-  <a href="screener.html" class="btn">📊 Otwórz screener</a>
-  <a href="tv_watchlist.txt" class="btn btn-sec">📺 TradingView lista</a>
-  <div class="ts">Ostatnia aktualizacja: 2026-06-05 20:39 UTC</div>
+<h1>🌍 Global Fundamental Screener</h1>
+<p>MarketCap≥200M · EBITDA≥15% · ROIC≥10% · RevGrowth≥5% · Ohlson≤10%</p>
+<div class="cards">
+<div class="card"><div class="card-n green">138</div><div class="card-l">🇺🇸 USA</div></div>
+<div class="card"><div class="card-n blue">15</div><div class="card-l">🇪🇺 Europa</div></div>
+<div class="card"><div class="card-n yellow">27</div><div class="card-l">🌏 Azja/EM</div></div>
+<div class="card"><div class="card-n">180</div><div class="card-l">Łącznie</div></div>
+</div>
+<a href="screener.html" class="btn">📊 Otwórz screener</a>
+<a href="tv_watchlist.txt" class="btn btn2">📺 TradingView lista</a>
+<div class="ts">Ostatnia aktualizacja: 2026-06-05 20:54 UTC</div>
 </div></body></html>
