@@ -48,11 +48,64 @@ RESULTS_DIR.mkdir(exist_ok=True)
 # ── ŹRÓDŁA TICKERÓW ───────────────────────────────────────────────────────────
 
 # iShares ETF holdings — USA (S&P500 + S&P600 + Russell 2000)
-ISHARES_URLS = {
+# iShares ETF — USA (~2500 spółek)
+ISHARES_URLS_US = {
     "IVV": "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf/1467271812596.ajax?fileType=csv&fileName=IVV_holdings&dataType=fund",
     "IJR": "https://www.ishares.com/us/products/239774/ishares-core-sp-smallcap-etf/1467271812596.ajax?fileType=csv&fileName=IJR_holdings&dataType=fund",
     "IWM": "https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund",
+    "IWB": "https://www.ishares.com/us/products/239707/ishares-russell-1000-etf/1467271812596.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund",
+    "IWC": "https://www.ishares.com/us/products/239711/ishares-micro-cap-etf/1467271812596.ajax?fileType=csv&fileName=IWC_holdings&dataType=fund",
+    "IWD": "https://www.ishares.com/us/products/239708/ishares-russell-1000-value-etf/1467271812596.ajax?fileType=csv&fileName=IWD_holdings&dataType=fund",
+    "IWF": "https://www.ishares.com/us/products/239706/ishares-russell-1000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWF_holdings&dataType=fund",
+    "IWS": "https://www.ishares.com/us/products/239714/ishares-russell-mid-cap-value-etf/1467271812596.ajax?fileType=csv&fileName=IWS_holdings&dataType=fund",
+    "IWP": "https://www.ishares.com/us/products/239713/ishares-russell-mid-cap-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWP_holdings&dataType=fund",
+    "IJH": "https://www.ishares.com/us/products/239763/ishares-core-sp-midcap-etf/1467271812596.ajax?fileType=csv&fileName=IJH_holdings&dataType=fund",
+    "IYW": "https://www.ishares.com/us/products/239816/ishares-us-technology-etf/1467271812596.ajax?fileType=csv&fileName=IYW_holdings&dataType=fund",
+    "IYH": "https://www.ishares.com/us/products/239808/ishares-us-healthcare-etf/1467271812596.ajax?fileType=csv&fileName=IYH_holdings&dataType=fund",
+    "IYF": "https://www.ishares.com/us/products/239735/ishares-us-financials-etf/1467271812596.ajax?fileType=csv&fileName=IYF_holdings&dataType=fund",
+    "IYE": "https://www.ishares.com/us/products/239733/ishares-us-energy-etf/1467271812596.ajax?fileType=csv&fileName=IYE_holdings&dataType=fund",
+    "IYC": "https://www.ishares.com/us/products/239740/ishares-us-consumer-discretionary-etf/1467271812596.ajax?fileType=csv&fileName=IYC_holdings&dataType=fund",
+    "IYK": "https://www.ishares.com/us/products/239741/ishares-us-consumer-staples-etf/1467271812596.ajax?fileType=csv&fileName=IYK_holdings&dataType=fund",
+    "IYJ": "https://www.ishares.com/us/products/239746/ishares-us-industrials-etf/1467271812596.ajax?fileType=csv&fileName=IYJ_holdings&dataType=fund",
+    "IYM": "https://www.ishares.com/us/products/239752/ishares-us-basic-materials-etf/1467271812596.ajax?fileType=csv&fileName=IYM_holdings&dataType=fund",
+    "IYR": "https://www.ishares.com/us/products/239812/ishares-us-real-estate-etf/1467271812596.ajax?fileType=csv&fileName=IYR_holdings&dataType=fund",
+    "IDU": "https://www.ishares.com/us/products/239755/ishares-us-utilities-etf/1467271812596.ajax?fileType=csv&fileName=IDU_holdings&dataType=fund",
 }
+
+# iShares ETF — Europa
+ISHARES_URLS_EU = {
+    "EZU":  "https://www.ishares.com/us/products/239639/ishares-msci-eurozone-etf/1467271812596.ajax?fileType=csv&fileName=EZU_holdings&dataType=fund",
+    "EWG":  "https://www.ishares.com/us/products/239629/ishares-msci-germany-etf/1467271812596.ajax?fileType=csv&fileName=EWG_holdings&dataType=fund",
+    "EWQ":  "https://www.ishares.com/us/products/239641/ishares-msci-france-etf/1467271812596.ajax?fileType=csv&fileName=EWQ_holdings&dataType=fund",
+    "EWU":  "https://www.ishares.com/us/products/239658/ishares-msci-united-kingdom-etf/1467271812596.ajax?fileType=csv&fileName=EWU_holdings&dataType=fund",
+    "EWI":  "https://www.ishares.com/us/products/239637/ishares-msci-italy-etf/1467271812596.ajax?fileType=csv&fileName=EWI_holdings&dataType=fund",
+    "EWP":  "https://www.ishares.com/us/products/239643/ishares-msci-spain-etf/1467271812596.ajax?fileType=csv&fileName=EWP_holdings&dataType=fund",
+    "EWN":  "https://www.ishares.com/us/products/239640/ishares-msci-netherlands-etf/1467271812596.ajax?fileType=csv&fileName=EWN_holdings&dataType=fund",
+    "EWK":  "https://www.ishares.com/us/products/239623/ishares-msci-belgium-etf/1467271812596.ajax?fileType=csv&fileName=EWK_holdings&dataType=fund",
+    "EWD":  "https://www.ishares.com/us/products/239626/ishares-msci-sweden-etf/1467271812596.ajax?fileType=csv&fileName=EWD_holdings&dataType=fund",
+    "EPOL": "https://www.ishares.com/us/products/239685/ishares-msci-poland-etf/1467271812596.ajax?fileType=csv&fileName=EPOL_holdings&dataType=fund",
+    "EWL":  "https://www.ishares.com/us/products/239659/ishares-msci-switzerland-etf/1467271812596.ajax?fileType=csv&fileName=EWL_holdings&dataType=fund",
+    "EWO":  "https://www.ishares.com/us/products/239622/ishares-msci-austria-etf/1467271812596.ajax?fileType=csv&fileName=EWO_holdings&dataType=fund",
+    "VGK":  "https://www.ishares.com/us/products/239639/ishares-msci-eurozone-etf/1467271812596.ajax?fileType=csv&fileName=EZU_holdings&dataType=fund",
+}
+
+# iShares ETF — Azja + reszta świata
+ISHARES_URLS_ASIA = {
+    "EWJ":  "https://www.ishares.com/us/products/239634/ishares-msci-japan-etf/1467271812596.ajax?fileType=csv&fileName=EWJ_holdings&dataType=fund",
+    "EWY":  "https://www.ishares.com/us/products/239655/ishares-msci-south-korea-etf/1467271812596.ajax?fileType=csv&fileName=EWY_holdings&dataType=fund",
+    "EWT":  "https://www.ishares.com/us/products/239657/ishares-msci-taiwan-etf/1467271812596.ajax?fileType=csv&fileName=EWT_holdings&dataType=fund",
+    "EWH":  "https://www.ishares.com/us/products/239630/ishares-msci-hong-kong-etf/1467271812596.ajax?fileType=csv&fileName=EWH_holdings&dataType=fund",
+    "EWA":  "https://www.ishares.com/us/products/239619/ishares-msci-australia-etf/1467271812596.ajax?fileType=csv&fileName=EWA_holdings&dataType=fund",
+    "INDA": "https://www.ishares.com/us/products/268205/ishares-msci-india-etf/1467271812596.ajax?fileType=csv&fileName=INDA_holdings&dataType=fund",
+    "EWZ":  "https://www.ishares.com/us/products/239612/ishares-msci-brazil-etf/1467271812596.ajax?fileType=csv&fileName=EWZ_holdings&dataType=fund",
+    "EWC":  "https://www.ishares.com/us/products/239621/ishares-msci-canada-etf/1467271812596.ajax?fileType=csv&fileName=EWC_holdings&dataType=fund",
+    "EWS":  "https://www.ishares.com/us/products/239649/ishares-msci-singapore-etf/1467271812596.ajax?fileType=csv&fileName=EWS_holdings&dataType=fund",
+    "EEM":  "https://www.ishares.com/us/products/269849/ishares-msci-emerging-markets-etf/1467271812596.ajax?fileType=csv&fileName=EEM_holdings&dataType=fund",
+    "ACWI": "https://www.ishares.com/us/products/239600/ishares-msci-acwi-etf/1467271812596.ajax?fileType=csv&fileName=ACWI_holdings&dataType=fund",
+}
+
+# Połącz wszystkie
+ISHARES_URLS = {**ISHARES_URLS_US, **ISHARES_URLS_EU, **ISHARES_URLS_ASIA}
 
 # Europa + Azja — statyczna lista (tickery Yahoo Finance)
 STATIC_TICKERS = {
@@ -129,61 +182,79 @@ STATIC_TICKERS = {
 }
 
 
-def fetch_ishares_tickers() -> list[str]:
-    """Pobiera tickery z iShares ETF CSV."""
+def fetch_ishares_group(etf_dict: dict, label: str) -> list[tuple[str, str]]:
+    """Pobiera tickery z grupy iShares ETF. Zwraca listę (ticker, label)."""
+    import io
     tickers = []
-    for name, url in ISHARES_URLS.items():
+    seen_local = set()
+    for name, url in etf_dict.items():
         try:
-            print(f"  {name} ...", end=" ", flush=True)
+            print(f"    {name} ...", end=" ", flush=True)
             r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
             if r.status_code != 200:
                 print(f"HTTP {r.status_code}")
                 continue
             lines = r.text.splitlines()
-            # Znajdź wiersz nagłówkowy z "Ticker"
             start = 0
             for i, line in enumerate(lines):
                 if "Ticker" in line and "Name" in line:
                     start = i
                     break
             df = pd.read_csv(
-                __import__("io").StringIO("\n".join(lines[start:])),
+                io.StringIO("\n".join(lines[start:])),
                 on_bad_lines="skip",
             )
             col = next((c for c in df.columns if "Ticker" in c), None)
             if col:
                 batch = [str(t).strip() for t in df[col].dropna()
                          if str(t).strip() and str(t).strip() not in ("-","","nan")]
-                tickers.extend(batch)
-                print(f"{len(batch)} tickerów")
+                added = 0
+                for t in batch:
+                    if t not in seen_local:
+                        seen_local.add(t)
+                        tickers.append((t, label))
+                        added += 1
+                print(f"{added} tickerów")
             else:
                 print("brak kolumny Ticker")
         except Exception as e:
             print(f"błąd: {e}")
+        time.sleep(0.3)
     return tickers
 
 
 def build_ticker_list() -> list[tuple[str,str]]:
-    """Zwraca listę (ticker, exchange)."""
+    """Zwraca listę (ticker, exchange/region). Deduplikuje globalnie."""
     result = []
     seen   = set()
 
-    # USA z iShares
-    print("  Pobieranie iShares ETF...")
-    us_tickers = fetch_ishares_tickers()
-    for t in us_tickers:
-        if t not in seen:
-            seen.add(t)
-            result.append((t, "US"))
+    def add_batch(batch):
+        for (t, ex) in batch:
+            if t not in seen:
+                seen.add(t)
+                result.append((t, ex))
 
-    # Europa + Azja ze statycznej listy
+    # USA — iShares ETF sektorowe + indeksy (~5 000–7 000 unikalnych)
+    print("  [USA] iShares ETF...")
+    add_batch(fetch_ishares_group(ISHARES_URLS_US, "US"))
+
+    # Europa — iShares ETF krajowe
+    print("  [EU] iShares ETF...")
+    add_batch(fetch_ishares_group(ISHARES_URLS_EU, "EU"))
+
+    # Azja + reszta świata — iShares ETF
+    print("  [ASIA/EM] iShares ETF...")
+    add_batch(fetch_ishares_group(ISHARES_URLS_ASIA, "ASIA"))
+
+    # Statyczna lista uzupełniająca (GPW + dodatkowe tickery)
+    print("  [STATIC] Uzupełnienie statyczne...")
     for exchange, tickers in STATIC_TICKERS.items():
         for t in tickers:
             if t not in seen:
                 seen.add(t)
                 result.append((t, exchange))
 
-    print(f"  ✅ Łącznie tickerów: {len(result)}")
+    print(f"\n  ✅ Łącznie unikalnych tickerów: {len(result)}")
     return result
 
 
