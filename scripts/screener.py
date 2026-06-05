@@ -27,15 +27,20 @@ RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
 
 FILTERS = dict(
-    market_cap_min     = 1_000_000_000,
-    price_min          = 10.0,
-    eps_ttm_min        = 0.10,
-    ebitda_margin_min  = 15.0,
-    roic_min           = 10.0,
-    cash_ops_min       = 1_000_000,
-    revenue_growth_min = 5.0,
-    ohlson_max         = 5.0,
+    market_cap_min     = 200_000_000,   # 200M — zgodnie z poprzednim screenerem
+    price_min          = 5.0,           # niższy próg — ceny w EUR/GBP/JPY różne
+    eps_ttm_min        = 0.01,          # tylko > 0 (zysk, nie strata)
+    ebitda_margin_min  = 15.0,          # % — twarda granica rentowności
+    roic_min           = 10.0,          # % — zwrot z kapitału
+    cash_ops_min       = 100_000,       # $100K — elastyczniej dla małych spółek EU
+    revenue_growth_min = 5.0,           # % YoY — lub skip gdy brak danych
+    ohlson_max         = 10.0,          # % — ryzyko bankructwa (luźniej)
 )
+
+# Możesz tu łatwo dostosować filtry bez edycji reszty kodu:
+# market_cap_min = 1_000_000_000  → tylko spółki > 1B
+# ebitda_margin_min = 20.0        → wyższa rentowność
+# roic_min = 15.0                 → bardziej selektywny ROIC
 
 # ── ŹRÓDŁA TICKERÓW ───────────────────────────────────────────────────────────
 
@@ -200,6 +205,10 @@ def check_fundamentals(ticker: str) -> dict | None:
     try:
         tk   = yf.Ticker(ticker)
         info = tk.info or {}
+        if not info or info.get("trailingPegRatio") is None and info.get("marketCap") is None:
+            # yfinance nie zwrócił żadnych danych — pomiń cicho
+            return None
+
         try: fin = tk.financials
         except: fin = pd.DataFrame()
         try: cf  = tk.cashflow
@@ -207,50 +216,94 @@ def check_fundamentals(ticker: str) -> dict | None:
 
         reasons = []
 
+        # ── Market Cap ──
         mktcap = safe(info.get("marketCap"))
         if mktcap < FILTERS["market_cap_min"]:
             reasons.append(f"cap={mktcap/1e9:.2f}B")
 
+        # ── Cena ──
         price = safe(info.get("currentPrice") or info.get("regularMarketPrice"))
         if price < FILTERS["price_min"]:
             reasons.append(f"price={price:.2f}")
 
+        # ── EPS TTM ──
         eps = safe(info.get("trailingEps") or info.get("epsTrailingTwelveMonths"))
         if eps < FILTERS["eps_ttm_min"]:
             reasons.append(f"eps={eps:.2f}")
 
-        ebitda   = safe(info.get("ebitda"))
-        revenue  = safe(info.get("totalRevenue"), 1)
-        ebitda_m = (ebitda / revenue * 100) if revenue > 0 else 0
+        # ── EBITDA Margin ──
+        # POPRAWKA: fallback z financial statements gdy info nie ma ebitda
+        ebitda  = safe(info.get("ebitda"))
+        revenue = safe(info.get("totalRevenue"), 1)
+        if ebitda == 0 and not fin.empty:
+            for label in ["EBITDA", "Normalized EBITDA"]:
+                if label in fin.index:
+                    v = fin.loc[label].dropna()
+                    if len(v): ebitda = float(v.iloc[0]); break
+        if revenue <= 1 and not fin.empty:
+            for label in ["Total Revenue", "Revenue"]:
+                if label in fin.index:
+                    v = fin.loc[label].dropna()
+                    if len(v): revenue = max(float(v.iloc[0]), 1); break
+        ebitda_m = (ebitda / revenue * 100) if revenue > 1 else 0
         if ebitda_m < FILTERS["ebitda_margin_min"]:
             reasons.append(f"ebitda_m={ebitda_m:.1f}%")
 
+        # ── ROIC ──
+        # POPRAWKA: używamy totalStockholdersEquity zamiast bookValue*shares
         ni           = safe(info.get("netIncomeToCommon"))
-        total_equity = safe(info.get("bookValue")) * safe(info.get("sharesOutstanding"), 1)
-        total_debt   = safe(info.get("totalDebt"))
-        inv_cap      = total_equity + total_debt
-        roic         = (ni / inv_cap * 100) if inv_cap > 0 else 0
+        total_equity = safe(info.get("totalStockholdersEquity") or
+                            info.get("stockholdersEquity"))
+        # ostateczny fallback z bilansu
+        if total_equity == 0:
+            try:
+                bs = tk.balance_sheet
+                if not bs.empty:
+                    for label in ["Stockholders Equity", "Total Equity Gross Minority Interest",
+                                  "Common Stock Equity"]:
+                        if label in bs.index:
+                            v = bs.loc[label].dropna()
+                            if len(v): total_equity = float(v.iloc[0]); break
+            except: pass
+        total_debt = safe(info.get("totalDebt"))
+        inv_cap    = total_equity + total_debt
+        roic       = (ni / inv_cap * 100) if inv_cap > 0 else 0
         if roic < FILTERS["roic_min"]:
             reasons.append(f"roic={roic:.1f}%")
 
+        # ── Cash from Operations ──
         cash_ops = safe(info.get("operatingCashflow"))
-        if cash_ops == 0 and not cf.empty and "Operating Cash Flow" in cf.index:
-            v = cf.loc["Operating Cash Flow"].dropna()
-            if len(v): cash_ops = float(v.iloc[0])
+        if cash_ops == 0 and not cf.empty:
+            for label in ["Operating Cash Flow", "Cash From Operations"]:
+                if label in cf.index:
+                    v = cf.loc[label].dropna()
+                    if len(v): cash_ops = float(v.iloc[0]); break
         if cash_ops < FILTERS["cash_ops_min"]:
             reasons.append(f"cash_ops={cash_ops/1e6:.1f}M")
 
-        rev_growth = safe(info.get("revenueGrowth")) * 100
-        if rev_growth == 0 and not fin.empty and "Total Revenue" in fin.index:
-            v = fin.loc["Total Revenue"].dropna()
-            if len(v) >= 2:
-                r0, r1 = float(v.iloc[0]), float(v.iloc[1])
-                rev_growth = ((r0 - r1) / abs(r1) * 100) if r1 != 0 else 0
-        if rev_growth < FILTERS["revenue_growth_min"]:
+        # ── Revenue Growth YoY ──
+        # POPRAWKA: None * 100 dawało 0.0 → zawsze fail; teraz skip gdy brak danych
+        rev_growth_raw = info.get("revenueGrowth")
+        if rev_growth_raw is not None:
+            rev_growth = float(rev_growth_raw) * 100
+        else:
+            # fallback z financial statements
+            rev_growth = None
+            if not fin.empty:
+                for label in ["Total Revenue", "Revenue"]:
+                    if label in fin.index:
+                        v = fin.loc[label].dropna()
+                        if len(v) >= 2:
+                            r0, r1 = float(v.iloc[0]), float(v.iloc[1])
+                            rev_growth = ((r0 - r1) / abs(r1) * 100) if r1 != 0 else None
+                        break
+        # Jeśli nadal brak danych — nie odrzucaj, pomiń ten filtr
+        if rev_growth is not None and rev_growth < FILTERS["revenue_growth_min"]:
             reasons.append(f"rev={rev_growth:.1f}%")
 
         eps_growth = safe(info.get("earningsGrowth")) * 100
 
+        # ── Ohlson Score ──
         ohlson = ohlson_score(info, fin, cf)
         if ohlson is not None and ohlson > FILTERS["ohlson_max"]:
             reasons.append(f"ohlson={ohlson:.1f}%")
@@ -271,7 +324,7 @@ def check_fundamentals(ticker: str) -> dict | None:
             "ebitda_margin": round(ebitda_m, 2),
             "roic":          round(roic, 2),
             "cash_ops":      int(cash_ops),
-            "rev_growth":    round(rev_growth, 2),
+            "rev_growth":    round(rev_growth, 2) if rev_growth is not None else None,
             "ohlson":        ohlson,
         }
     except Exception as e:
