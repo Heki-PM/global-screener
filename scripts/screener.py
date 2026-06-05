@@ -1,240 +1,350 @@
 #!/usr/bin/env python3
 """
-Global Stock Screener — FMP + yfinance
-Etap 1 : FMP /stock-screener  → wstępne zawężenie po marketCap + price
-Etap 2 : FMP financial statements → weryfikacja EBITDA, ROIC, EPS, growth
-Etap 3 : yfinance → SMI(10,3,3) W1 → sygnał
+Global Stock Screener — yfinance only
+======================================
+Etap 1 : Pobiera listy tickerów z iShares ETF (USA) + statyczna lista EU/Azja
+Etap 2 : yfinance — filtry fundamentalne (MarketCap, EPS, EBITDA, ROIC, growth)
+Etap 3 : yfinance — SMI(10,3,3) W1 → sygnał
 Etap 4 : HTML + JSON + TradingView export
+
+Filtry (zgodnie z obrazkiem):
+  Market Cap          ≥ 1B USD
+  Price               ≥ 10
+  EPS Basic TTM       ≥ 0.10
+  EBITDA Margin TTM   ≥ 15%
+  ROIC TTM            ≥ 10%
+  Revenue growth YoY  ≥ 5%
+  Cash from Ops TTM   ≥ 1 000 000
+  Ohlson Score        ≤ 5%
 """
 
-import os, json, time, math, requests, yfinance as yf
-import pandas as pd, numpy as np
+import os, json, time, math, requests
+import yfinance as yf
+import pandas as pd
+import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
 
 # ── KONFIGURACJA ──────────────────────────────────────────────────────────────
-FMP_KEY = os.environ.get("FMP_API_KEY", "DjE0sr8vQerl3JfZTeHMYJjgoTXR4qgY")
-DEBUG   = os.environ.get("DEBUG", "0") == "1"   # ustaw DEBUG=1 żeby widzieć powody odrzuceń
+DEBUG = os.environ.get("DEBUG", "0") == "1"
 
 FILTERS = dict(
-    market_cap_min      = 1_000_000_000,   # 1B (luźniej niż 10B — FMP darmowy plan)
-    price_min           = 10,
-    ebitda_margin_min   = 15.0,            # %
-    roic_min            = 10.0,            # %
-    cash_ops_min        = 1_000_000,
-    eps_ttm_min         = 0.10,
-    revenue_growth_min  = 5.0,             # %
-    eps_growth_min      = 5.0,             # %
-    ohlson_max          = 5.0,             # % (trochę luźniej)
+    market_cap_min     = 1_000_000_000,   # 1B
+    price_min          = 10.0,
+    eps_ttm_min        = 0.10,
+    ebitda_margin_min  = 15.0,            # %
+    roic_min           = 10.0,            # %
+    cash_ops_min       = 1_000_000,
+    revenue_growth_min = 5.0,             # % YoY
+    ohlson_max         = 5.0,             # %
 )
 
 SMI_K, SMI_D, SMI_SIG = 10, 3, 3
 OVERSOLD = -40
 
-EXCHANGES = [
-    "NASDAQ","NYSE","AMEX",
-    "EURONEXT","LSE","XETRA",
-    "TSX","ASX","NSE","TSE","HKEX","SGX","KRX",
-]
-
 RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
 
-# ── HELPERS ───────────────────────────────────────────────────────────────────
-def fmp_get(endpoint: str, params: dict = {}, timeout: int = 20) -> dict | list | None:
-    """Wywołuje FMP API. Zwraca dane lub None przy błędzie."""
-    try:
-        r = requests.get(
-            f"https://financialmodelingprep.com/api/v3/{endpoint}",
-            params={"apikey": FMP_KEY, **params},
-            timeout=timeout,
-        )
-        if r.status_code == 200:
-            return r.json()
-        if DEBUG:
-            print(f"    [FMP {r.status_code}] {endpoint}: {r.text[:120]}")
-    except Exception as e:
-        if DEBUG:
-            print(f"    [FMP ERR] {endpoint}: {e}")
-    return None
+# ── ŹRÓDŁA TICKERÓW ───────────────────────────────────────────────────────────
 
-def safe_float(val, default=0.0) -> float:
-    try: return float(val) if val is not None else default
+# iShares ETF holdings — USA (S&P500 + S&P600 + Russell 2000)
+ISHARES_URLS = {
+    "IVV": "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf/1467271812596.ajax?fileType=csv&fileName=IVV_holdings&dataType=fund",
+    "IJR": "https://www.ishares.com/us/products/239774/ishares-core-sp-smallcap-etf/1467271812596.ajax?fileType=csv&fileName=IJR_holdings&dataType=fund",
+    "IWM": "https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund",
+}
+
+# Europa + Azja — statyczna lista (tickery Yahoo Finance)
+STATIC_TICKERS = {
+    # Germany — DAX
+    "XETRA": ["ADS.DE","AIR.DE","ALV.DE","BAS.DE","BAYN.DE","BMW.DE","CON.DE",
+               "DAI.DE","DB1.DE","DBK.DE","DHL.DE","DTE.DE","EOAN.DE","FRE.DE",
+               "HEI.DE","HEN3.DE","IFX.DE","MRK.DE","MUV2.DE","RWE.DE","SAP.DE",
+               "SIE.DE","SHL.DE","VOW3.DE","VNA.DE","ZAL.DE","DPW.DE","ENR.DE",
+               "FME.DE","MTX.DE","PAH3.DE","PUM.DE","QIA.DE","SDAX.DE","SRT.DE",
+               "SY1.DE","TKA.DE","WDI.DE","1COV.DE","BOSS.DE"],
+    # France — CAC40 + SBF120
+    "EURONEXT_FR": ["AI.PA","AIR.PA","ALO.PA","ATO.PA","BN.PA","BNP.PA","CA.PA",
+                    "CAP.PA","CS.PA","DG.PA","ENGI.PA","ERF.PA","GLE.PA","HO.PA",
+                    "KER.PA","LR.PA","MC.PA","ML.PA","MT.PA","ORA.PA","PUB.PA",
+                    "RI.PA","RMS.PA","RNO.PA","SAF.PA","SAN.PA","SGO.PA","STLAP.PA",
+                    "SU.PA","SW.PA","TEC.PA","TTE.PA","UG.PA","VIE.PA","VIV.PA",
+                    "WLN.PA","EL.PA","FP.PA","FTI.PA","ACA.PA"],
+    # UK — FTSE100
+    "LSE": ["AAL.L","ABF.L","ADM.L","AHT.L","ANTO.L","AV.L","AZN.L","BA.L",
+            "BAB.L","BARC.L","BDEV.L","BKG.L","BLND.L","BP.L","BRBY.L","BT-A.L",
+            "CCH.L","CNA.L","CPG.L","CRH.L","DCC.L","DGE.L","DLN.L","ECM.L",
+            "EZJ.L","FERG.L","FLTR.L","GLEN.L","GSK.L","HIK.L","HL.L","HLMA.L",
+            "HSBA.L","IAG.L","IHG.L","IMB.L","INF.L","ITRK.L","ITV.L","JD.L",
+            "KGF.L","LAND.L","LGEN.L","LLOY.L","LSE.L","MCRO.L","MNDI.L","MNG.L",
+            "MRO.L","NG.L","NWG.L","NXT.L","OCDO.L","PHNX.L","PRU.L","PSN.L",
+            "PSON.L","RB.L","RDSA.L","REL.L","RIO.L","RKT.L","RMV.L","RR.L",
+            "RS1.L","RSA.L","SBRY.L","SDR.L","SGE.L","SGRO.L","SKG.L","SMDS.L",
+            "SMIN.L","SMT.L","SN.L","SPX.L","SSE.L","STAN.L","SVT.L","TSCO.L",
+            "TW.L","ULVR.L","UU.L","VOD.L","WPP.L","WTB.L"],
+    # Netherlands — AEX
+    "EURONEXT_NL": ["AALB.AS","ABN.AS","ADYEN.AS","AGN.AS","AH.AS","AKZA.AS",
+                    "ASM.AS","ASML.AS","ASR.AS","BESI.AS","DSM.AS","HEIA.AS",
+                    "IMCD.AS","ING.AS","INGA.AS","KPN.AS","MT.AS","NN.AS",
+                    "PHIA.AS","PRX.AS","RAND.AS","REN.AS","SHELL.AS","SBM.AS",
+                    "UNA.AS","URW.AS","VPK.AS","WKL.AS"],
+    # Switzerland — SMI
+    "SIX": ["ABBN.SW","ALC.SW","CFR.SW","CSGN.SW","GEBN.SW","GIVN.SW","HOLN.SW",
+            "KN.SW","LONN.SW","NESN.SW","NOVN.SW","PGHN.SW","ROCG.SW","ROG.SW",
+            "SGSN.SW","SIKA.SW","SLHN.SW","SRENH.SW","UBSG.SW","ZURN.SW"],
+    # Poland — WIG20 + mWIG40
+    "GPW": ["PKN.WA","PKO.WA","PZU.WA","PEKAO.WA","KGHM.WA","LPP.WA","DNP.WA",
+            "ALE.WA","CDR.WA","CPS.WA","JSW.WA","KRU.WA","MBK.WA","OPL.WA",
+            "PCO.WA","PLY.WA","SPL.WA","TPE.WA","ZPC.WA","11B.WA","ACT.WA",
+            "AMB.WA","ATT.WA","BHW.WA","BRS.WA","CAR.WA","CCC.WA","CEZ.WA",
+            "ENA.WA","ENP.WA","EUR.WA","GPW.WA","GTC.WA","ING.WA","KTY.WA",
+            "LTS.WA","MLK.WA","MOL.WA","MRC.WA","OAT.WA"],
+    # Japan — Nikkei225 (wybrane)
+    "TSE": ["7203.T","9984.T","6758.T","8306.T","9432.T","7267.T","6861.T",
+            "4063.T","9433.T","8316.T","7974.T","6367.T","6501.T","6902.T",
+            "4502.T","8035.T","6954.T","4523.T","2914.T","8411.T","9022.T",
+            "9021.T","7011.T","4519.T","5108.T","6098.T","3382.T","8001.T",
+            "8002.T","8031.T"],
+    # Hong Kong — HSI (wybrane)
+    "HKEX": ["0005.HK","0700.HK","0941.HK","1299.HK","0939.HK","1398.HK",
+             "2318.HK","3988.HK","0388.HK","0883.HK","0002.HK","0003.HK",
+             "0011.HK","1109.HK","0016.HK","0017.HK","0688.HK","0857.HK",
+             "1088.HK","2628.HK"],
+    # Australia — ASX200 (wybrane)
+    "ASX": ["BHP.AX","CBA.AX","CSL.AX","ANZ.AX","WBC.AX","NAB.AX","WES.AX",
+            "MQG.AX","RIO.AX","TLS.AX","WOW.AX","TCL.AX","STO.AX","AMC.AX",
+            "REA.AX","COL.AX","ALL.AX","IAG.AX","QBE.AX","FMG.AX"],
+    # Canada — TSX (wybrane)
+    "TSX": ["RY.TO","TD.TO","BNS.TO","BMO.TO","CM.TO","CNR.TO","CP.TO",
+            "ENB.TO","TRP.TO","SU.TO","ABX.TO","MFC.TO","SLF.TO","POW.TO",
+            "BCE.TO","T.TO","CNQ.TO","CVE.TO","IMO.TO","FFH.TO"],
+    # South Korea — KOSPI (wybrane)
+    "KRX": ["005930.KS","000660.KS","035420.KS","005380.KS","051910.KS",
+            "006400.KS","035720.KS","207940.KS","000270.KS","068270.KS"],
+    # India — Nifty50 (wybrane, NSE)
+    "NSE": ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
+            "HINDUNILVR.NS","BAJFINANCE.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS",
+            "LT.NS","ASIANPAINT.NS","AXISBANK.NS","MARUTI.NS","SUNPHARMA.NS",
+            "TITAN.NS","ULTRACEMCO.NS","WIPRO.NS","POWERGRID.NS","NESTLEIND.NS"],
+}
+
+
+def fetch_ishares_tickers() -> list[str]:
+    """Pobiera tickery z iShares ETF CSV."""
+    tickers = []
+    for name, url in ISHARES_URLS.items():
+        try:
+            print(f"  {name} ...", end=" ", flush=True)
+            r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                print(f"HTTP {r.status_code}")
+                continue
+            lines = r.text.splitlines()
+            # Znajdź wiersz nagłówkowy z "Ticker"
+            start = 0
+            for i, line in enumerate(lines):
+                if "Ticker" in line and "Name" in line:
+                    start = i
+                    break
+            df = pd.read_csv(
+                __import__("io").StringIO("\n".join(lines[start:])),
+                on_bad_lines="skip",
+            )
+            col = next((c for c in df.columns if "Ticker" in c), None)
+            if col:
+                batch = [str(t).strip() for t in df[col].dropna()
+                         if str(t).strip() and str(t).strip() not in ("-","","nan")]
+                tickers.extend(batch)
+                print(f"{len(batch)} tickerów")
+            else:
+                print("brak kolumny Ticker")
+        except Exception as e:
+            print(f"błąd: {e}")
+    return tickers
+
+
+def build_ticker_list() -> list[tuple[str,str]]:
+    """Zwraca listę (ticker, exchange)."""
+    result = []
+    seen   = set()
+
+    # USA z iShares
+    print("  Pobieranie iShares ETF...")
+    us_tickers = fetch_ishares_tickers()
+    for t in us_tickers:
+        if t not in seen:
+            seen.add(t)
+            result.append((t, "US"))
+
+    # Europa + Azja ze statycznej listy
+    for exchange, tickers in STATIC_TICKERS.items():
+        for t in tickers:
+            if t not in seen:
+                seen.add(t)
+                result.append((t, exchange))
+
+    print(f"  ✅ Łącznie tickerów: {len(result)}")
+    return result
+
+
+# ── FUNDAMENTY (yfinance) ─────────────────────────────────────────────────────
+
+def safe(val, default=0.0):
+    try: return float(val) if val is not None and val == val else default
     except: return default
 
-def safe_int(val, default=0) -> int:
-    try: return int(val) if val is not None else default
-    except: return default
 
-# ── ETAP 1: FMP SCREENER ──────────────────────────────────────────────────────
-def fetch_fmp_candidates() -> list[dict]:
-    print("\n═══ ETAP 1: FMP Screener ═══")
-    all_c, seen = [], set()
-
-    for exchange in EXCHANGES:
-        page, ex_n = 0, 0
-        print(f"  {exchange} ...", end=" ", flush=True)
-        while True:
-            data = fmp_get("stock-screener", {
-                "exchange":          exchange,
-                "marketCapMoreThan": FILTERS["market_cap_min"],
-                "priceMoreThan":     FILTERS["price_min"],
-                "isEtf":             "false",
-                "isActivelyTrading": "true",
-                "limit":             250,
-                "offset":            page * 250,
-            })
-            if not data or not isinstance(data, list):
-                break
-            for item in data:
-                sym = item.get("symbol","")
-                if sym and sym not in seen:
-                    seen.add(sym)
-                    item["_exchange"] = exchange
-                    all_c.append(item)
-                    ex_n += 1
-            if len(data) < 250:
-                break
-            page += 1
-            time.sleep(0.25)
-        print(ex_n)
-        time.sleep(0.2)
-
-    print(f"\n  ✅ Kandydatów łącznie: {len(all_c)}")
-    return all_c
-
-# ── ETAP 2: WERYFIKACJA FUNDAMENTALNA ─────────────────────────────────────────
-def ohlson_score(bs_curr: dict, bs_prev: dict, inc: dict, cf: dict) -> float | None:
+def ohlson_score(info: dict, fin: pd.DataFrame, bs: pd.DataFrame, cf: pd.DataFrame) -> float | None:
+    """Uproszczony Ohlson O-Score → prawdopodobieństwo bankructwa (%)."""
     try:
-        ta   = safe_float(bs_curr.get("totalAssets"),  1)
-        tl   = safe_float(bs_curr.get("totalLiabilities"))
-        ca   = safe_float(bs_curr.get("totalCurrentAssets"))
-        cl   = safe_float(bs_curr.get("totalCurrentLiabilities"))
-        ni   = safe_float(inc.get("netIncome"))
-        ocf  = safe_float(cf.get("operatingCashFlow"))
-        ta_p = safe_float(bs_prev.get("totalAssets"), 1)
-        ni_p = safe_float(bs_prev.get("retainedEarnings"))
+        ta   = safe(info.get("totalAssets"), 1)
+        tl   = safe(info.get("totalDebt", 0)) + safe(info.get("totalCurrentLiabilities", 0))
+        ca   = safe(info.get("totalCurrentAssets", 0))
+        cl   = safe(info.get("totalCurrentLiabilities", 0))
+        ni   = safe(info.get("netIncomeToCommon", 0))
+        ocf  = safe(info.get("operatingCashflow", 0))
 
-        x1 = math.log(max(ta, 1) / 1000)
-        x2 = tl / ta
-        x3 = (ca - cl) / ta
-        x4 = cl / max(ca, 1)
-        x5 = 1 if tl > ta else 0
-        x6 = ni / ta
-        x7 = ocf / ta
-        x8 = 1 if ni < 0 and ni_p < 0 else 0
-        x9 = (ni - ni_p) / (abs(ni) + abs(ni_p) + 1e-9)
+        # fallback z financial statements
+        if not fin.empty and "Net Income" in fin.index:
+            ni_vals = fin.loc["Net Income"].dropna()
+            ni = float(ni_vals.iloc[0]) if len(ni_vals) > 0 else ni
+        if not cf.empty and "Operating Cash Flow" in cf.index:
+            ocf_vals = cf.loc["Operating Cash Flow"].dropna()
+            ocf = float(ocf_vals.iloc[0]) if len(ocf_vals) > 0 else ocf
 
-        score = -1.32 - 0.407*x1 + 6.03*x2 - 1.43*x3 + 0.076*x4 \
-                - 1.72*x5 - 2.37*x6 - 1.83*x7 + 0.285*x8 - 0.521*x9
+        ta   = max(ta, 1)
+        x1   = math.log(ta / 1e6) if ta > 0 else 0
+        x2   = tl / ta
+        x3   = (ca - cl) / ta
+        x4   = cl / max(ca, 1)
+        x5   = 1 if tl > ta else 0
+        x6   = ni / ta
+        x7   = ocf / ta
+        x8   = 1 if ni < 0 else 0
+        x9   = 0  # uproszczenie (brak poprzedniego roku)
+
+        score = (-1.32 - 0.407*x1 + 6.03*x2 - 1.43*x3 + 0.076*x4
+                 - 1.72*x5 - 2.37*x6 - 1.83*x7 + 0.285*x8 - 0.521*x9)
         return round(100 / (1 + math.exp(-score)), 2)
     except:
         return None
 
 
-def verify(symbol: str, fmp_item: dict) -> dict | None:
+def check_fundamentals(ticker: str) -> dict | None:
     """
-    Pobiera dane finansowe z FMP i weryfikuje filtry.
-    Zwraca dict z fundamentals lub None jeśli nie przechodzi.
-    Używa income-statement + balance-sheet + cash-flow (dostępne na darmowym planie).
-    ratios-ttm jako uzupełnienie (może nie być dostępne).
+    Pobiera dane z yfinance i weryfikuje wszystkie filtry.
+    Zwraca dict z danymi lub None.
     """
-    reject_reason = []
+    try:
+        tk   = yf.Ticker(ticker)
+        info = tk.info or {}
 
-    # ── income statement ──
-    inc_data = fmp_get(f"income-statement/{symbol}", {"limit": 2, "period": "annual"})
-    inc  = inc_data[0] if inc_data and len(inc_data) > 0 else {}
-    inc2 = inc_data[1] if inc_data and len(inc_data) > 1 else {}
+        # Pobierz sprawozdania finansowe
+        try: fin = tk.financials
+        except: fin = pd.DataFrame()
+        try: bs  = tk.balance_sheet
+        except: bs = pd.DataFrame()
+        try: cf  = tk.cashflow
+        except: cf = pd.DataFrame()
 
-    # ── balance sheet ──
-    bs_data = fmp_get(f"balance-sheet-statement/{symbol}", {"limit": 2, "period": "annual"})
-    bs   = bs_data[0] if bs_data and len(bs_data) > 0 else {}
-    bs2  = bs_data[1] if bs_data and len(bs_data) > 1 else {}
+        reasons = []
 
-    # ── cash flow ──
-    cf_data = fmp_get(f"cash-flow-statement/{symbol}", {"limit": 1, "period": "annual"})
-    cf = cf_data[0] if cf_data and len(cf_data) > 0 else {}
+        # ── Market Cap ──
+        mktcap = safe(info.get("marketCap", 0))
+        if mktcap < FILTERS["market_cap_min"]:
+            reasons.append(f"mktcap={mktcap/1e9:.2f}B")
 
-    # ── ratios TTM (bonus — może nie działać na free plan) ──
-    ratios_data = fmp_get(f"ratios-ttm/{symbol}")
-    ratios = ratios_data[0] if ratios_data and isinstance(ratios_data, list) and ratios_data else {}
+        # ── Cena ──
+        price = safe(info.get("currentPrice") or info.get("regularMarketPrice", 0))
+        if price < FILTERS["price_min"]:
+            reasons.append(f"price={price:.2f}")
 
-    # Wyciągnij wartości — z ratios (TTM) lub z income statement (roczne)
-    revenue      = safe_float(inc.get("revenue"), 1)
-    revenue_prev = safe_float(inc2.get("revenue"), revenue)
-    ebitda       = safe_float(inc.get("ebitda"))
-    net_income   = safe_float(inc.get("netIncome"))
-    eps          = safe_float(inc.get("eps") or fmp_item.get("lastAnnualEps"))
-    cash_ops     = safe_float(cf.get("operatingCashFlow"))
-    total_equity = safe_float(bs.get("totalStockholdersEquity"), 1)
-    total_debt   = safe_float(bs.get("totalDebt"))
-    invested_cap = total_equity + total_debt if (total_equity + total_debt) > 0 else 1
+        # ── EPS TTM ──
+        eps = safe(info.get("trailingEps") or info.get("epsTrailingTwelveMonths", 0))
+        if eps < FILTERS["eps_ttm_min"]:
+            reasons.append(f"eps={eps:.2f}")
 
-    # Wylicz wskaźniki
-    ebitda_margin_pct = (ebitda / revenue * 100) if revenue > 0 else 0
-    roic_pct          = (net_income / invested_cap * 100) if invested_cap > 0 else 0
-    rev_growth_pct    = ((revenue - revenue_prev) / abs(revenue_prev) * 100) if revenue_prev != 0 else 0
+        # ── EBITDA Margin ──
+        ebitda        = safe(info.get("ebitda", 0))
+        revenue       = safe(info.get("totalRevenue", 0))
+        ebitda_margin = (ebitda / revenue * 100) if revenue > 0 else 0
+        if ebitda_margin < FILTERS["ebitda_margin_min"]:
+            reasons.append(f"ebitda_m={ebitda_margin:.1f}%")
 
-    eps_prev    = safe_float(inc2.get("eps"))
-    eps_growth_pct = ((eps - eps_prev) / abs(eps_prev) * 100) if eps_prev and eps_prev != 0 else 0
+        # ── ROIC ──
+        net_income    = safe(info.get("netIncomeToCommon", 0))
+        total_equity  = safe(info.get("bookValue", 0)) * safe(info.get("sharesOutstanding", 1))
+        total_debt    = safe(info.get("totalDebt", 0))
+        invested_cap  = total_equity + total_debt
+        roic          = (net_income / invested_cap * 100) if invested_cap > 0 else 0
+        if roic < FILTERS["roic_min"]:
+            reasons.append(f"roic={roic:.1f}%")
 
-    # Preferuj ratios TTM jeśli dostępne
-    if ratios:
-        ebitda_margin_pct = safe_float(ratios.get("ebitdaPerRevenueTTM"), ebitda_margin_pct / 100) * 100
-        roic_from_ratios  = safe_float(ratios.get("returnOnCapitalEmployedTTM"), roic_pct / 100)
-        if roic_from_ratios != 0:
-            roic_pct = roic_from_ratios * 100
+        # ── Cash from Operations ──
+        cash_ops = safe(info.get("operatingCashflow", 0))
+        # fallback z cashflow statement
+        if cash_ops == 0 and not cf.empty and "Operating Cash Flow" in cf.index:
+            vals = cf.loc["Operating Cash Flow"].dropna()
+            if len(vals) > 0:
+                cash_ops = float(vals.iloc[0])
+        if cash_ops < FILTERS["cash_ops_min"]:
+            reasons.append(f"cash_ops={cash_ops/1e6:.1f}M")
 
-    # ── FILTRY ────
-    if eps < FILTERS["eps_ttm_min"]:
-        reject_reason.append(f"EPS={eps:.2f}<{FILTERS['eps_ttm_min']}")
+        # ── Revenue Growth YoY ──
+        rev_growth = safe(info.get("revenueGrowth", 0)) * 100
+        # fallback z financial statements
+        if rev_growth == 0 and not fin.empty and "Total Revenue" in fin.index:
+            rev_vals = fin.loc["Total Revenue"].dropna()
+            if len(rev_vals) >= 2:
+                r0, r1 = float(rev_vals.iloc[0]), float(rev_vals.iloc[1])
+                rev_growth = ((r0 - r1) / abs(r1) * 100) if r1 != 0 else 0
+        if rev_growth < FILTERS["revenue_growth_min"]:
+            reasons.append(f"rev_growth={rev_growth:.1f}%")
 
-    if ebitda_margin_pct < FILTERS["ebitda_margin_min"]:
-        reject_reason.append(f"EBITDA_M={ebitda_margin_pct:.1f}%<{FILTERS['ebitda_margin_min']}%")
+        # ── EPS Growth (dla info) ──
+        eps_growth = safe(info.get("earningsGrowth", 0)) * 100
 
-    if roic_pct < FILTERS["roic_min"]:
-        reject_reason.append(f"ROIC={roic_pct:.1f}%<{FILTERS['roic_min']}%")
+        # ── Ohlson Score ──
+        ohlson = ohlson_score(info, fin, bs, cf)
+        if ohlson is not None and ohlson > FILTERS["ohlson_max"]:
+            reasons.append(f"ohlson={ohlson:.1f}%")
 
-    if cash_ops < FILTERS["cash_ops_min"]:
-        reject_reason.append(f"CashOps={cash_ops:.0f}<{FILTERS['cash_ops_min']}")
+        if reasons:
+            if DEBUG:
+                print(f"    SKIP {ticker:12s}: {', '.join(reasons)}")
+            return None
 
-    if rev_growth_pct < FILTERS["revenue_growth_min"]:
-        reject_reason.append(f"RevGrowth={rev_growth_pct:.1f}%<{FILTERS['revenue_growth_min']}%")
+        return {
+            "name":          info.get("longName") or info.get("shortName", ""),
+            "sector":        info.get("sector", ""),
+            "price":         round(price, 2),
+            "market_cap":    int(mktcap),
+            "eps":           round(eps, 4),
+            "ebitda_margin": round(ebitda_margin, 2),
+            "roic":          round(roic, 2),
+            "cash_ops":      int(cash_ops),
+            "rev_growth":    round(rev_growth, 2),
+            "eps_growth":    round(eps_growth, 2),
+            "ohlson":        ohlson,
+        }
 
-    if eps_prev and eps_growth_pct < FILTERS["eps_growth_min"]:
-        reject_reason.append(f"EPSGrowth={eps_growth_pct:.1f}%<{FILTERS['eps_growth_min']}%")
-
-    ohlson = ohlson_score(bs, bs2, inc, cf)
-    if ohlson is not None and ohlson > FILTERS["ohlson_max"]:
-        reject_reason.append(f"Ohlson={ohlson:.1f}%>{FILTERS['ohlson_max']}%")
-
-    if reject_reason:
+    except Exception as e:
         if DEBUG:
-            print(f"    SKIP {symbol}: {', '.join(reject_reason)}")
+            print(f"    ERR {ticker}: {e}")
         return None
 
-    return {
-        "eps":           round(eps, 4),
-        "ebitda_margin": round(ebitda_margin_pct, 2),
-        "roic":          round(roic_pct, 2),
-        "cash_ops":      int(cash_ops),
-        "rev_growth":    round(rev_growth_pct, 2),
-        "eps_growth":    round(eps_growth_pct, 2),
-        "ohlson":        ohlson,
-    }
 
-# ── ETAP 3: SMI ───────────────────────────────────────────────────────────────
+# ── SMI ───────────────────────────────────────────────────────────────────────
+
 def calc_smi(close: pd.Series, k=10, d=3, sig=3):
-    ll  = close.rolling(k).min()
-    hh  = close.rolling(k).max()
-    mid = (hh + ll) / 2
-    ds  = (close - mid).ewm(span=d, adjust=False).mean()
-    dds = ds.ewm(span=d, adjust=False).mean()
-    dif = (hh - ll).ewm(span=d, adjust=False).mean()
-    dif2= dif.ewm(span=d, adjust=False).mean()
-    smi_vals = np.where(dif2 != 0, 100 * dds / (0.5 * dif2), 0)
-    smi_s    = pd.Series(smi_vals, index=close.index)
+    ll   = close.rolling(k).min()
+    hh   = close.rolling(k).max()
+    ds   = (close - (hh+ll)/2).ewm(span=d, adjust=False).mean()
+    dds  = ds.ewm(span=d, adjust=False).mean()
+    dif2 = (hh-ll).ewm(span=d, adjust=False).mean().ewm(span=d, adjust=False).mean()
+    smi_s = pd.Series(np.where(dif2!=0, 100*dds/(0.5*dif2), 0), index=close.index)
     return smi_s, smi_s.ewm(span=sig, adjust=False).mean()
+
 
 def get_smi_signal(ticker: str):
     try:
@@ -245,18 +355,16 @@ def get_smi_signal(ticker: str):
         s0,s1,s2 = smi_s.iloc[-1], smi_s.iloc[-2], smi_s.iloc[-3]
         e0,e1    = sig_s.iloc[-1], sig_s.iloc[-2]
 
-        if s1 <= e1 and s0 > e0:
-            sig_type = "STRONG BUY" if s1 < OVERSOLD else "BUY"
-        elif s0 > s1 and s1 <= s2 and s0 < e0:
-            sig_type = "TURNING UP"
-        else:
-            sig_type = None
-
-        return sig_type, round(float(s0), 2), round(float(e0), 2)
+        if   s1<=e1 and s0>e0 and s1<OVERSOLD: return "STRONG BUY", round(float(s0),2), round(float(e0),2)
+        elif s1<=e1 and s0>e0:                  return "BUY",        round(float(s0),2), round(float(e0),2)
+        elif s0>s1 and s1<=s2 and s0<e0:        return "TURNING UP", round(float(s0),2), round(float(e0),2)
+        return None, 0.0, 0.0
     except:
         return None, 0.0, 0.0
 
+
 # ── HTML ──────────────────────────────────────────────────────────────────────
+
 CSS = """<style>
 :root{--bg:#0f1117;--bg2:#1a1f2e;--bg3:#1e2530;--text:#e2e8f0;--muted:#64748b;
       --border:#2d3748;--green:#22c55e;--blue:#60a5fa;--purple:#a78bfa;--red:#f87171}
@@ -267,8 +375,7 @@ header h1{font-size:1.8rem;font-weight:800}
 header p{color:var(--muted);font-size:.88rem;margin-top:6px}
 .stats{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
 .stat{background:var(--bg3);border-radius:10px;padding:12px 22px;text-align:center}
-.stat-n{font-size:1.6rem;font-weight:800}
-.stat-l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.stat-n{font-size:1.6rem;font-weight:800}.stat-l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
 .green{color:var(--green)}.blue{color:var(--blue)}.purple{color:var(--purple)}
 section{margin-bottom:34px}
 section h2{font-size:1.05rem;font-weight:700;margin-bottom:12px;padding-left:2px}
@@ -282,8 +389,7 @@ tbody td{padding:8px 10px}
 .badge{display:inline-block;border-radius:5px;font-size:.68rem;font-weight:700;padding:2px 7px}
 .bs{background:#22c55e22;color:var(--green)}.bb{background:#60a5fa22;color:var(--blue)}
 .bt{background:#a78bfa22;color:var(--purple)}
-.ticker{font-weight:800;font-size:.93rem}
-.name{color:var(--muted);font-size:.76rem}
+.ticker{font-weight:800;font-size:.93rem}.name{color:var(--muted);font-size:.76rem}
 .num{font-variant-numeric:tabular-nums}
 .pos{color:var(--green)}.neg{color:var(--red)}
 .ex{font-size:.68rem;color:var(--muted);background:var(--bg3);border-radius:4px;padding:1px 5px}
@@ -303,90 +409,74 @@ def badge(s):
     if s=="BUY":        return '<span class="badge bb">▲ BUY</span>'
     return                     '<span class="badge bt">↗ TURNING UP</span>'
 
-def pct_cell(v):
-    cls = "pos" if v >= 0 else "neg"
-    return f'<span class="{cls}">{v:+.1f}%</span>'
+def pct(v):
+    return f'<span class="{"pos" if v>=0 else "neg"}">{v:+.1f}%</span>'
+
+THEAD = """<thead><tr>
+<th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Sektor</th><th>Cena</th>
+<th>Market Cap</th><th>Rev Growth</th><th>EPS Growth</th><th>EBITDA M.</th>
+<th>ROIC</th><th>EPS TTM</th><th>Ohlson</th><th>SMI/Sig</th>
+</tr></thead>"""
 
 def table_rows(items):
     if not items:
-        return '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr>'
+        return '<tr><td colspan="13" style="text-align:center;padding:24px;color:var(--muted)">Brak wyników</td></tr>'
     rows = []
     for r in items:
         ohlson = f"{r['ohlson']:.1f}%" if r.get("ohlson") is not None else "—"
         rows.append(f"""<tr>
 <td><span class="ticker"><a href="https://finance.yahoo.com/quote/{r['symbol']}" target="_blank">{r['symbol']}</a></span>
-    <br><span class="name">{r.get('name','')[:28]}</span></td>
+    <br><span class="name">{str(r.get('name',''))[:28]}</span></td>
 <td>{badge(r['signal'])}</td>
 <td><span class="ex">{r.get('exchange','')}</span></td>
+<td><span class="name">{str(r.get('sector',''))[:20]}</span></td>
 <td class="num">${r.get('price',0):.2f}</td>
 <td class="num">{fmt_cap(r.get('market_cap',0))}</td>
-<td class="num">{pct_cell(r.get('rev_growth',0))}</td>
-<td class="num">{pct_cell(r.get('eps_growth',0))}</td>
+<td class="num">{pct(r.get('rev_growth',0))}</td>
+<td class="num">{pct(r.get('eps_growth',0))}</td>
 <td class="num">{r.get('ebitda_margin',0):.1f}%</td>
 <td class="num">{r.get('roic',0):.1f}%</td>
 <td class="num">{r.get('eps',0):.2f}</td>
 <td class="num">{ohlson}</td>
-<td class="num">{r.get('smi_val',0):.1f} / {r.get('smi_sig',0):.1f}</td>
+<td class="num">{r.get('smi_val',0):.1f}/{r.get('smi_sig',0):.1f}</td>
 </tr>""")
     return "\n".join(rows)
-
-THEAD = """<thead><tr>
-<th>Spółka</th><th>Sygnał</th><th>Giełda</th><th>Cena</th><th>Market Cap</th>
-<th>Rev Growth</th><th>EPS Growth</th><th>EBITDA M.</th><th>ROIC</th>
-<th>EPS TTM</th><th>Ohlson</th><th>SMI/Sig</th>
-</tr></thead>"""
 
 def gen_screener(results, ts):
     strong  = [r for r in results if r["signal"]=="STRONG BUY"]
     buy     = [r for r in results if r["signal"]=="BUY"]
     turning = [r for r in results if r["signal"]=="TURNING UP"]
-
     fbox = f"""<div class="fbox">
-<strong>Filtry:</strong>
-Market Cap ≥ <strong>{FILTERS['market_cap_min']//1_000_000_000}B</strong> &nbsp;·&nbsp;
-Cena ≥ <strong>${FILTERS['price_min']}</strong> &nbsp;·&nbsp;
-EBITDA Margin ≥ <strong>{FILTERS['ebitda_margin_min']}%</strong> &nbsp;·&nbsp;
-ROIC ≥ <strong>{FILTERS['roic_min']}%</strong> &nbsp;·&nbsp;
-EPS ≥ <strong>{FILTERS['eps_ttm_min']}</strong> &nbsp;·&nbsp;
-Rev Growth ≥ <strong>{FILTERS['revenue_growth_min']}%</strong> &nbsp;·&nbsp;
-EPS Growth ≥ <strong>{FILTERS['eps_growth_min']}%</strong> &nbsp;·&nbsp;
-Ohlson ≤ <strong>{FILTERS['ohlson_max']}%</strong> &nbsp;·&nbsp;
-Cash Ops ≥ <strong>$1M</strong> &nbsp;·&nbsp;
-SMI(10,3,3) W1
+<strong>Filtry:</strong> MarketCap≥<strong>1B</strong> · Cena≥<strong>$10</strong> ·
+EPS≥<strong>0.10</strong> · EBITDA M.≥<strong>15%</strong> · ROIC≥<strong>10%</strong> ·
+RevGrowth≥<strong>5%</strong> · CashOps≥<strong>$1M</strong> · Ohlson≤<strong>5%</strong> ·
+<strong>SMI(10,3,3) W1</strong>
 </div>"""
-
-    def section(title, color, items):
-        return f"""<section>
-<h2 class="{color}">{title}</h2>
-<table>{THEAD}<tbody>{table_rows(items)}</tbody></table>
-</section>"""
-
-    return f"""<!DOCTYPE html>
-<html lang="pl"><head><meta charset="UTF-8">
+    def sec(title, color, items):
+        return f'<section><h2 class="{color}">{title}</h2><table>{THEAD}<tbody>{table_rows(items)}</tbody></table></section>'
+    return f"""<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Global Stock Screener</title>{CSS}</head><body>
 <header><h1>🌍 Global Stock Screener</h1>
-<p>SMI(10,3,3) · Tygodniowy · FMP + yfinance &nbsp;|&nbsp; {ts}</p></header>
+<p>SMI(10,3,3) · Tygodniowy · yfinance · {ts}</p></header>
 <div class="stats">
 <div class="stat"><div class="stat-n green">{len(strong)}</div><div class="stat-l">⚡ Strong BUY</div></div>
 <div class="stat"><div class="stat-n blue">{len(buy)}</div><div class="stat-l">▲ BUY</div></div>
 <div class="stat"><div class="stat-n purple">{len(turning)}</div><div class="stat-l">↗ Turning Up</div></div>
 <div class="stat"><div class="stat-n">{len(results)}</div><div class="stat-l">Łącznie</div></div>
-</div>
-{fbox}
-{section("⚡ Strong BUY — crossover z oversold (SMI < −40)", "green", strong)}
-{section("▲ BUY — SMI crossover", "blue", buy)}
-{section("↗ Turning Up — zmiana kierunku (pre-crossover)", "purple", turning)}
+</div>{fbox}
+{sec("⚡ Strong BUY — crossover z oversold (SMI &lt; −40)","green",strong)}
+{sec("▲ BUY — SMI crossover","blue",buy)}
+{sec("↗ Turning Up — zmiana kierunku (pre-crossover)","purple",turning)}
 <footer style="text-align:center;color:var(--muted);font-size:.75rem;padding:40px 0 20px">
-Dane: FMP + Yahoo Finance · Tylko informacyjne, nie stanowi rekomendacji inwestycyjnej
+Dane: Yahoo Finance (yfinance) · Tylko informacyjne, nie stanowi rekomendacji
 </footer></body></html>"""
 
 def gen_index(results, ts):
-    s = len([r for r in results if r["signal"]=="STRONG BUY"])
-    b = len([r for r in results if r["signal"]=="BUY"])
-    t = len([r for r in results if r["signal"]=="TURNING UP"])
-    return f"""<!DOCTYPE html>
-<html lang="pl"><head><meta charset="UTF-8">
+    s=len([r for r in results if r["signal"]=="STRONG BUY"])
+    b=len([r for r in results if r["signal"]=="BUY"])
+    t=len([r for r in results if r["signal"]=="TURNING UP"])
+    return f"""<!DOCTYPE html><html lang="pl"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Global Screener</title>{CSS}
 <style>
@@ -394,19 +484,16 @@ def gen_index(results, ts):
 .hero h1{{font-size:2.4rem;font-weight:900;margin-bottom:10px}}
 .hero p{{color:var(--muted);margin-bottom:40px}}
 .cards{{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-bottom:44px}}
-.card{{background:var(--bg3);border-radius:14px;padding:28px 36px;text-align:center;
-       min-width:150px;border:1px solid var(--border);transition:transform .15s}}
+.card{{background:var(--bg3);border-radius:14px;padding:28px 36px;text-align:center;min-width:150px;border:1px solid var(--border);transition:transform .15s}}
 .card:hover{{transform:translateY(-3px)}}
 .card-n{{font-size:2.2rem;font-weight:900}}
 .card-l{{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}}
-.btn{{display:inline-block;background:#3b82f6;color:#fff;border-radius:10px;
-      padding:14px 32px;font-size:1rem;font-weight:700;text-decoration:none}}
+.btn{{display:inline-block;background:#3b82f6;color:#fff;border-radius:10px;padding:14px 32px;font-size:1rem;font-weight:700;text-decoration:none}}
 .btn:hover{{background:#2563eb}}
 .ts{{color:var(--muted);font-size:.8rem;margin-top:18px}}
 </style></head><body>
-<div class="hero">
-<h1>🌍 Global Stock Screener</h1>
-<p>SMI(10,3,3) · Tygodniowy · Filtry fundamentalne · Globalny zasięg</p>
+<div class="hero"><h1>🌍 Global Stock Screener</h1>
+<p>SMI(10,3,3) · Tygodniowy · Filtry fundamentalne · yfinance</p>
 <div class="cards">
 <div class="card"><div class="card-n green">{s}</div><div class="card-l">⚡ Strong BUY</div></div>
 <div class="card"><div class="card-n blue">{b}</div><div class="card-l">▲ BUY</div></div>
@@ -418,87 +505,84 @@ def gen_index(results, ts):
 </div></body></html>"""
 
 # ── TV EXPORT ─────────────────────────────────────────────────────────────────
-EX_MAP = {"NASDAQ":"NASDAQ","NYSE":"NYSE","AMEX":"AMEX","EURONEXT":"EURONEXT",
-          "LSE":"LSE","XETRA":"XETR","TSX":"TSX","ASX":"ASX",
-          "NSE":"NSE","TSE":"TSE","HKEX":"HKEX","SGX":"SGX","KRX":"KRX"}
-
-def tv(sym, exchange):
-    pfx  = EX_MAP.get(exchange, exchange)
-    base = sym.replace("-",".").split(".")[0]
-    return f"{pfx}:{base}"
-
 def save_tv(results):
-    groups = {"strong":[], "buy":[], "turning":[], "all":[]}
+    groups = {"strong":[],"buy":[],"turning":[],"all":[]}
+    EX = {"XETRA":"XETR","EURONEXT_FR":"EURONEXT","EURONEXT_NL":"EURONEXT",
+          "LSE":"LSE","SIX":"SIX","GPW":"GPW","TSE":"TSE","HKEX":"HKEX",
+          "ASX":"ASX","TSX":"TSX","KRX":"KRX","NSE":"NSE","US":""}
     for r in results:
-        t = tv(r["symbol"], r.get("exchange",""))
-        groups["all"].append(t)
-        if r["signal"]=="STRONG BUY": groups["strong"].append(t)
-        elif r["signal"]=="BUY":      groups["buy"].append(t)
-        else:                         groups["turning"].append(t)
+        sym = r["symbol"]
+        ex  = r.get("exchange","")
+        pfx = EX.get(ex, ex)
+        base = sym.replace("-",".").split(".")[0]
+        tv_sym = f"{pfx}:{base}" if pfx else base
+        groups["all"].append(tv_sym)
+        if   r["signal"]=="STRONG BUY": groups["strong"].append(tv_sym)
+        elif r["signal"]=="BUY":        groups["buy"].append(tv_sym)
+        else:                           groups["turning"].append(tv_sym)
     for name, tickers in groups.items():
-        (RESULTS_DIR / f"tv_{name}.txt").write_text(",".join(tickers))
+        (RESULTS_DIR/f"tv_{name}.txt").write_text(",".join(tickers))
     print(f"  ✅ TV watchlists: {len(groups['all'])} tickerów")
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
+
 def main():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     print(f"\n🌍 Global Stock Screener — {ts}")
-    print(f"   DEBUG={'ON' if DEBUG else 'OFF'} (ustaw env DEBUG=1 żeby widzieć powody odrzuceń)")
+    print(f"   DEBUG={'ON' if DEBUG else 'OFF'}")
+    print(f"   Filtry: {FILTERS}")
 
-    # ETAP 1
-    candidates = fetch_fmp_candidates()
+    # ETAP 1: budowanie listy tickerów
+    print("\n═══ ETAP 1: Lista tickerów ═══")
+    all_tickers = build_ticker_list()
 
-    # ETAP 2 + 3
-    print(f"\n═══ ETAP 2+3: Fundamenty + SMI ({len(candidates)} kandydatów) ═══")
+    # ETAP 2+3: fundamenty + SMI
+    print(f"\n═══ ETAP 2+3: Fundamenty + SMI ({len(all_tickers)} tickerów) ═══")
     results, skipped, no_sig, errs = [], 0, 0, 0
+    total = len(all_tickers)
 
-    for i, cand in enumerate(candidates, 1):
-        sym      = cand.get("symbol","")
-        name     = cand.get("companyName","")
-        price    = safe_float(cand.get("price"))
-        mktcap   = safe_float(cand.get("marketCap"))
-        exchange = cand.get("_exchange","")
-
-        if not sym:
-            continue
-
-        if i % 25 == 0 or i == len(candidates):
-            print(f"  [{i}/{len(candidates)}] ✅{len(results)} ❌{skipped} 〰{no_sig} ⚠{errs}")
+    for i, (ticker, exchange) in enumerate(all_tickers, 1):
+        if i % 50 == 0 or i == total:
+            print(f"  [{i}/{total}] ✅{len(results)} ❌{skipped} 〰{no_sig} ⚠{errs}")
 
         try:
-            fund = verify(sym, cand)
+            fund = check_fundamentals(ticker)
             if fund is None:
                 skipped += 1
                 time.sleep(0.15)
                 continue
 
-            sig, smi_v, smi_s_v = get_smi_signal(sym)
+            sig, smi_v, smi_sv = get_smi_signal(ticker)
             if sig is None:
                 no_sig += 1
+                if DEBUG:
+                    print(f"    NO_SIG {ticker}")
                 time.sleep(0.2)
                 continue
 
             results.append({
-                "symbol": sym, "name": name, "exchange": exchange,
-                "price": round(price,2), "market_cap": int(mktcap),
-                "signal": sig, "smi_val": smi_v, "smi_sig": smi_s_v,
+                "symbol":   ticker,
+                "exchange": exchange,
+                "signal":   sig,
+                "smi_val":  smi_v,
+                "smi_sig":  smi_sv,
                 **fund,
             })
-            print(f"  ✅ {sym:12s} | {sig:12s} | SMI {smi_v:+.1f}")
-            time.sleep(0.3)
+            print(f"  ✅ {ticker:14s} | {sig:12s} | SMI {smi_v:+.1f}")
+            time.sleep(0.4)
 
         except Exception as e:
             errs += 1
-            if DEBUG: print(f"  ⚠️  {sym}: {e}")
+            if DEBUG:
+                print(f"  ⚠️  {ticker}: {e}")
             time.sleep(0.5)
 
         time.sleep(0.1)
 
-    # Sortowanie
-    order = {"STRONG BUY":0, "BUY":1, "TURNING UP":2}
+    # sortowanie
+    order = {"STRONG BUY":0,"BUY":1,"TURNING UP":2}
     results.sort(key=lambda r: (order.get(r["signal"],9), -r.get("market_cap",0)))
 
-    # Statystyki
     strong_n  = sum(1 for r in results if r["signal"]=="STRONG BUY")
     buy_n     = sum(1 for r in results if r["signal"]=="BUY")
     turning_n = sum(1 for r in results if r["signal"]=="TURNING UP")
@@ -507,19 +591,19 @@ def main():
     print(f"  ⚡ STRONG BUY : {strong_n}")
     print(f"  ▲  BUY       : {buy_n}")
     print(f"  ↗  TURNING UP: {turning_n}")
-    print(f"  ❌ Odfiltrowane: {skipped} / {len(candidates)}")
-    print(f"  〰  Bez sygnału: {no_sig}")
-    print(f"  ⚠️  Błędy:       {errs}")
+    print(f"  ❌ Odfiltrowane: {skipped}/{total}")
+    print(f"  〰  Bez sygnału : {no_sig}")
+    print(f"  ⚠️  Błędy       : {errs}")
 
-    # ETAP 4: Zapis
+    # ETAP 4: zapis
     print("\n═══ ETAP 4: Zapis ═══")
-    (RESULTS_DIR/"results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2))
+    (RESULTS_DIR/"results.json").write_text(json.dumps(results,ensure_ascii=False,indent=2))
     (RESULTS_DIR/"meta.json").write_text(json.dumps({
         "run_ts":ts,"total":len(results),"strong":strong_n,"buy":buy_n,"turning":turning_n,
-        "candidates":len(candidates),"skipped":skipped,"no_signal":no_sig,
-    }, indent=2))
-    (RESULTS_DIR/"screener.html").write_text(gen_screener(results, ts))
-    (RESULTS_DIR/"index.html").write_text(gen_index(results, ts))
+        "tickers_checked":total,"filtered_out":skipped,"no_signal":no_sig,
+    },indent=2))
+    (RESULTS_DIR/"screener.html").write_text(gen_screener(results,ts))
+    (RESULTS_DIR/"index.html").write_text(gen_index(results,ts))
     save_tv(results)
     print(f"\n🏁 Gotowe — {len(results)} sygnałów.")
 
