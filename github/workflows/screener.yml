@@ -1,0 +1,70 @@
+name: Global Stock Screener
+
+on:
+  schedule:
+    # 15:00 UTC = 17:00 CEST (lato) / 16:00 CET (zima) — po zamknięciu rynków EU
+    - cron: '0 15 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  run-screener:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install yfinance pandas numpy requests
+
+      - name: Run screener
+        run: python scripts/screener.py
+        env:
+          PYTHONUNBUFFERED: "1"
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+
+      - name: Verify output
+        run: |
+          if [ ! -f results/results.json ]; then
+            echo "❌ BŁĄD: results/results.json nie został wygenerowany!"
+            exit 1
+          fi
+          COUNT=$(python3 -c "import json; d=json.load(open('results/results.json')); print(len(d))")
+          echo "✅ Sygnałów: ${COUNT}"
+          cat results/meta.json
+
+      - name: Commit results to repo
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results/
+          git diff --staged --quiet || \
+            git commit -m "📊 Screener $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: results/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
