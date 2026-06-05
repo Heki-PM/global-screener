@@ -2,7 +2,7 @@ name: Global Stock Screener
 
 on:
   schedule:
-    - cron: '0 15 * * 1-5'   # 17:00 CEST / 16:00 CET
+    - cron: '0 15 * * 5'   # piątek 17:00 CEST / 16:00 CET
   workflow_dispatch:
     inputs:
       debug:
