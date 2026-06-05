@@ -2,9 +2,18 @@ name: Global Stock Screener
 
 on:
   schedule:
-    # 15:00 UTC = 17:00 CEST (lato) / 16:00 CET (zima) — po zamknięciu rynków EU
+    # 15:00 UTC = 17:00 CEST (lato) / 16:00 CET (zima)
     - cron: '0 15 * * 1-5'
   workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Tryb DEBUG (pokazuje powody odrzuceń)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -32,14 +41,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install yfinance pandas numpy requests
+        run: pip install yfinance pandas numpy requests
 
       - name: Run screener
         run: python scripts/screener.py
         env:
           PYTHONUNBUFFERED: "1"
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          DEBUG: ${{ github.event.inputs.debug == 'true' && '1' || '0' }}
 
       - name: Verify output
         run: |
@@ -51,7 +60,7 @@ jobs:
           echo "✅ Sygnałów: ${COUNT}"
           cat results/meta.json
 
-      - name: Commit results to repo
+      - name: Commit results
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
