@@ -2,18 +2,15 @@ name: Global Stock Screener
 
 on:
   schedule:
-    # 15:00 UTC = 17:00 CEST (lato) / 16:00 CET (zima)
-    - cron: '0 15 * * 1-5'
+    - cron: '0 15 * * 1-5'   # 17:00 CEST / 16:00 CET
   workflow_dispatch:
     inputs:
       debug:
-        description: 'Tryb DEBUG (pokazuje powody odrzuceń)'
+        description: 'Tryb DEBUG (powody odrzuceń w logach)'
         required: false
         default: 'false'
         type: choice
-        options:
-          - 'false'
-          - 'true'
+        options: ['false','true']
 
 permissions:
   contents: write
@@ -32,11 +29,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -47,16 +42,15 @@ jobs:
         run: python scripts/screener.py
         env:
           PYTHONUNBUFFERED: "1"
-          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           DEBUG: ${{ github.event.inputs.debug == 'true' && '1' || '0' }}
 
       - name: Verify output
         run: |
           if [ ! -f results/results.json ]; then
-            echo "❌ BŁĄD: results/results.json nie został wygenerowany!"
+            echo "❌ BŁĄD: brak results/results.json"
             exit 1
           fi
-          COUNT=$(python3 -c "import json; d=json.load(open('results/results.json')); print(len(d))")
+          COUNT=$(python3 -c "import json; print(len(json.load(open('results/results.json'))))")
           echo "✅ Sygnałów: ${COUNT}"
           cat results/meta.json
 
@@ -69,8 +63,7 @@ jobs:
             git commit -m "📊 Screener $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: results/
 
