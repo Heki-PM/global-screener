@@ -1,9 +1,10 @@
 {
-  "run_ts": "2026-06-05 16:20 UTC",
+  "run_ts": "2026-06-05 16:37 UTC",
   "total": 0,
   "strong": 0,
   "buy": 0,
   "turning": 0,
-  "candidates_checked": 0,
-  "filtered_out": 0
+  "candidates": 0,
+  "skipped": 0,
+  "no_signal": 0
 }
