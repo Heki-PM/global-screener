@@ -1,9 +1,9 @@
 {
-  "run_ts": "2026-07-19 15:59 UTC",
-  "total": 180,
-  "us": 138,
-  "eu": 15,
+  "run_ts": "2026-07-26 16:03 UTC",
+  "total": 176,
+  "us": 133,
+  "eu": 16,
   "asia": 27,
-  "tickers_checked": 7633,
-  "filtered_out": 7453
+  "tickers_checked": 7646,
+  "filtered_out": 7470
 }
